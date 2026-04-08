@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 380" font-family="-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+<rect width="780" height="380" fill="#fafafa"/>
+<text x="390" y="28" font-size="16" font-weight="700" fill="#111" text-anchor="middle">Effective F1 on the leak-free Juliet corpus (n=30)</text>
+<text x="210" y="69" font-size="13" font-weight="600" fill="#222" text-anchor="end">Claude Opus 4.6 (blind)</text>
+<rect x="220" y="50" width="520" height="28" fill="#ececec" rx="3"/>
+<rect x="220" y="50" width="520" height="28" fill="#d97706" rx="3"/>
+<text x="732" y="69" font-size="13" font-weight="700" fill="#fff" text-anchor="end">1.000</text>
+<text x="210" y="111" font-size="13" font-weight="600" fill="#222" text-anchor="end">Claude Sonnet 4.5</text>
+<rect x="220" y="92" width="520" height="28" fill="#ececec" rx="3"/>
+<rect x="220" y="92" width="326" height="28" fill="#d97706" rx="3"/>
+<text x="554" y="111" font-size="13" font-weight="700" fill="#222" text-anchor="start">0.629</text>
+<text x="210" y="153" font-size="13" font-weight="600" fill="#222" text-anchor="end">Gemini 3.1 Flash Lite</text>
+<rect x="220" y="134" width="520" height="28" fill="#ececec" rx="3"/>
+<rect x="220" y="134" width="317" height="28" fill="#4285f4" rx="3"/>
+<text x="545" y="153" font-size="13" font-weight="700" fill="#222" text-anchor="start">0.611</text>
+<text x="210" y="195" font-size="13" font-weight="600" fill="#222" text-anchor="end">GPT-5.4 (Codex OAuth)</text>
+<rect x="220" y="176" width="520" height="28" fill="#ececec" rx="3"/>
+<rect x="220" y="176" width="303" height="28" fill="#10a37f" rx="3"/>
+<text x="531" y="195" font-size="13" font-weight="700" fill="#222" text-anchor="start">0.583</text>
+<text x="210" y="237" font-size="13" font-weight="600" fill="#222" text-anchor="end">gemma4:e4b (local)</text>
+<rect x="220" y="218" width="520" height="28" fill="#ececec" rx="3"/>
+<rect x="220" y="218" width="143" height="28" fill="#6b7280" rx="3"/>
+<text x="371" y="237" font-size="13" font-weight="700" fill="#222" text-anchor="start">0.276</text>
+<text x="210" y="279" font-size="13" font-weight="600" fill="#222" text-anchor="end">GPT-5.4 Mini</text>
+<rect x="220" y="260" width="520" height="28" fill="#ececec" rx="3"/>
+<rect x="220" y="260" width="115" height="28" fill="#10a37f" rx="3"/>
+<text x="343" y="279" font-size="13" font-weight="700" fill="#222" text-anchor="start">0.222</text>
+<line x1="220.0" y1="50" x2="220.0" y2="312" stroke="#d0d0d0" stroke-width="1" stroke-dasharray="2,3"/>
+<text x="220.0" y="326" font-size="11" fill="#666" text-anchor="middle">0.00</text>
+<line x1="350.0" y1="50" x2="350.0" y2="312" stroke="#d0d0d0" stroke-width="1" stroke-dasharray="2,3"/>
+<text x="350.0" y="326" font-size="11" fill="#666" text-anchor="middle">0.25</text>
+<line x1="480.0" y1="50" x2="480.0" y2="312" stroke="#d0d0d0" stroke-width="1" stroke-dasharray="2,3"/>
+<text x="480.0" y="326" font-size="11" fill="#666" text-anchor="middle">0.50</text>
+<line x1="610.0" y1="50" x2="610.0" y2="312" stroke="#d0d0d0" stroke-width="1" stroke-dasharray="2,3"/>
+<text x="610.0" y="326" font-size="11" fill="#666" text-anchor="middle">0.75</text>
+<line x1="740.0" y1="50" x2="740.0" y2="312" stroke="#d0d0d0" stroke-width="1" stroke-dasharray="2,3"/>
+<text x="740.0" y="326" font-size="11" fill="#666" text-anchor="middle">1.00</text>
+<text x="220" y="347" font-size="11" fill="#666">Provider:</text>
+<rect x="285" y="338" width="12" height="12" fill="#d97706" rx="2"/>
+<text x="301" y="347" font-size="11" fill="#666">anthropic</text>
+<rect x="380" y="338" width="12" height="12" fill="#4285f4" rx="2"/>
+<text x="396" y="347" font-size="11" fill="#666">google</text>
+<rect x="475" y="338" width="12" height="12" fill="#10a37f" rx="2"/>
+<text x="491" y="347" font-size="11" fill="#666">openai</text>
+<rect x="570" y="338" width="12" height="12" fill="#6b7280" rx="2"/>
+<text x="586" y="347" font-size="11" fill="#666">ollama</text>
+</svg>
