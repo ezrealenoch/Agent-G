@@ -302,7 +302,6 @@ def cmd_chat(args: argparse.Namespace) -> int:
     from src.runtime.checkpoint import CheckpointWriter
     from src.runtime.trace import TraceWriter
     from src.runtime.ghidra_pool import GhidraPool
-    from src.runtime.prompt_library import render_prompt
 
     binary_path = Path(args.binary).expanduser().resolve()
     if not binary_path.exists():
@@ -315,14 +314,12 @@ def cmd_chat(args: argparse.Namespace) -> int:
     runs_dir = Path(args.runs_dir).expanduser() / trace_id
     runs_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        prompt_text, prompt_ver, _ = render_prompt(
-            args.prompt_name, version=args.prompt_version,
-            binary_name=binary_path.name, task_kind=args.task,
-        )
-    except KeyError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
+    # Chat mode uses BridgeLite's "freeform" task, which sets a system
+    # prompt containing the tool reference + EXECUTE: tool_name(args)
+    # syntax that Agent-G's text-based parser expects. Overriding the
+    # system prompt at the runtime level strips that tool teaching and
+    # the model produces pure-text replies with zero tool calls.
+    bridge_task = "freeform"
 
     # Chat uses a wider budget by default — long sessions need headroom.
     budget = Budget(
@@ -343,7 +340,7 @@ def cmd_chat(args: argparse.Namespace) -> int:
 
     print(f"[agent-g v{__version__}] chat session trace_id={trace_id}")
     print(f"  binary: {binary_path}")
-    print(f"  prompt: {args.prompt_name} {prompt_ver}")
+    print(f"  task  : {bridge_task} (freeform REPL)")
     print(f"  runs  : {runs_dir}")
     print("  type /help for commands, /exit to quit")
     print()
@@ -356,7 +353,7 @@ def cmd_chat(args: argparse.Namespace) -> int:
             os.environ["AGENT_G_GHIDRA_AUTH_TOKEN"] = handle.auth_token
 
             bridge = BridgeLite(config=cfg, binary_name=binary_path.name)
-            bridge.start_task(args.task)
+            bridge.start_task(bridge_task)
             runtime = bridge.runtime
             runtime.budget_tracker = budget.new_tracker(
                 model_name=args.model or getattr(runtime.api, "model_name", "") or ""
@@ -368,9 +365,9 @@ def cmd_chat(args: argparse.Namespace) -> int:
             event_sink = EventJsonlSink(runs_dir / "events.jsonl")
             runtime.on_event = event_sink.emit
 
-            # Seed the session with the system prompt but do NOT run it
-            # as a turn — let the user ask the first question.
-            runtime.update_system_prompt(prompt_text)
+            # Do NOT override runtime.system_prompt here — BridgeLite's
+            # freeform builder already includes the tool reference and
+            # EXECUTE: syntax that the parser needs.
 
             turn_no = 0
             while True:
@@ -562,10 +559,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # chat
     chat = sub.add_parser("chat", help="interactive multi-turn session on a binary")
     chat.add_argument("binary", help="path to the binary to investigate")
-    chat.add_argument("--task", default="vuln")
     chat.add_argument("--model", default=None)
-    chat.add_argument("--prompt-name", default="vuln_hunt")
-    chat.add_argument("--prompt-version", default="latest")
     chat.add_argument("--runs-dir", default="runs")
     chat.add_argument("--log-level", default="INFO")
     chat.add_argument("--max-wall-time-s", type=float, default=3600.0)
