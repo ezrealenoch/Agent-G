@@ -116,11 +116,11 @@ python -c "from src.runtime.secrets import set_secret; \
 
 ## Benchmark results
 
-Agent-G ships with a **leak-free Juliet benchmark** (`benchmark/`) that
-measures how well different LLMs drive the ReAct loop on a 30-binary
-test corpus covering 10 CWE categories (OS command injection, format
-string, integer overflow, divide by zero, uninitialized variable,
-stack/heap overflow, double free, use-after-free, NULL deref).
+We evaluated Agent-G on a **leak-free Juliet benchmark** — a 30-binary
+stratified corpus covering 10 CWE categories (OS command injection,
+format string, integer overflow, divide by zero, uninitialized
+variable, stack/heap overflow, double free, use-after-free, NULL
+deref).
 
 Before every run the harness anonymizes symbol names, strips DWARF
 parameter names, masks Juliet scaffolding strings inside decompile
@@ -165,11 +165,6 @@ The full HTML report — including per-CWE heatmap, per-model verdict
 matrix, and a **Model Compatibility Notes** section documenting every
 quirk we hit per provider and the code fix that handles it — lives at
 [`logs/juliet_comparison_report.html`](logs/juliet_comparison_report.html).
-Regenerate any time with:
-
-```bash
-python benchmark/build_html_report.py
-```
 
 ---
 
@@ -238,7 +233,7 @@ trace replay, tool schema validation, and prompt library.
 - **`observability.py`** — JSON logs + trace-id contextvar + alert sinks
 - **`secrets.py`** — pluggable secrets chain (env / winvault / vault / awssm)
 
-`benchmark/` holds the Juliet test-suite harness (not imported by production code). `sandbox/` holds the Docker image. `tests/` holds the regression suite.
+`sandbox/` holds the Docker image. `tests/` holds the regression suite.
 
 ---
 

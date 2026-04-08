@@ -80,7 +80,7 @@ agent-g = "src.cli:main"
 # Issues = "https://github.com/your-org/agent-g/issues"
 
 [tool.setuptools]
-packages = ["src", "src.runtime", "benchmark", "tests"]
+packages = ["src", "src.runtime", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

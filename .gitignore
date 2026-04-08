@@ -43,9 +43,12 @@ logs/
 *.sqlite-shm
 *.db
 
-# ── Benchmark outputs ─────────────────────────────
-benchmark/logs/
-benchmark/runs/
+# ── Benchmark harness (dev-only, not shipped) ────
+# The Juliet benchmark harness lives in benchmark/ and is used
+# internally to measure LLM performance. It contains personal
+# convenience scripts and hard-coded paths and is not part of
+# the production Agent-G product.
+benchmark/
 *.html.bak
 
 # ── Ghidra temp + install ─────────────────────────
