@@ -43,6 +43,9 @@ logs/
 *.sqlite-shm
 *.db
 
+# ── Per-session handoff notes (dev-only, not shipped) ─
+docs/SESSION_HANDOFF.md
+
 # ── Benchmark harness (dev-only, not shipped) ────
 # The Juliet benchmark harness lives in benchmark/ and is used
 # internally to measure LLM performance. It contains personal
