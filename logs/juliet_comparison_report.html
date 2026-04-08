@@ -1,0 +1,1588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent-G Juliet Benchmark — Multi-Model Comparison</title>
+<style>
+  :root {
+    /* Warm tan/parchment theme — easy on the eyes */
+    --bg:        #f8f1e3;   /* parchment */
+    --bg-alt:    #efe4cd;   /* light tan */
+    --bg-code:   #ece0c4;
+    --text:      #3a2e1f;   /* deep cocoa */
+    --text-sub:  #5b4830;
+    --text-mute: #8a7253;
+    --border:    #d4c19a;
+    --border-lt: #e3d4ae;
+    --accent:    #7a4f24;   /* warm sienna */
+    --accent-lt: #a06a35;
+    --accent-bg: #f3e6c8;
+
+    /* Status colors — desaturated to match the tan palette */
+    --status-pass:  #4f7a2f;   /* sage green */
+    --status-warn:  #b07a18;   /* honey */
+    --status-fail:  #a23a2c;   /* terracotta */
+    --status-mute:  #9c8866;
+    --status-info:  #4a6c8a;   /* dusty blue */
+
+    /* Typography */
+    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-head: "Charter", "Georgia", "Times New Roman", Times, serif;
+    --font-mono: "SF Mono", "Monaco", "Menlo", "Consolas", "Liberation Mono", monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .container {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 48px 40px 80px;
+  }
+
+  /* ── Typography ─────────────────────────────────────────────── */
+  h1, h2, h3, h4 {
+    font-family: var(--font-head);
+    color: var(--text);
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  h1 {
+    font-size: 32px;
+    margin: 0 0 4px;
+    letter-spacing: -0.015em;
+  }
+  h2 {
+    font-size: 22px;
+    margin: 48px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--accent);
+  }
+  h3 {
+    font-size: 17px;
+    margin: 24px 0 10px;
+    color: var(--accent);
+  }
+  h4 {
+    font-size: 14px;
+    margin: 16px 0 8px;
+    color: var(--text-sub);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+  }
+  p { margin: 0 0 12px; }
+  a { color: var(--accent-lt); text-decoration: none; border-bottom: 1px solid transparent; }
+  a:hover { border-bottom-color: var(--accent-lt); }
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    background: var(--bg-code);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--border-lt);
+  }
+
+  /* ── Document header ───────────────────────────────────────── */
+  .doc-header {
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+  }
+  .doc-subtitle {
+    font-size: 15px;
+    color: var(--text-sub);
+    margin: 6px 0 0;
+    font-style: italic;
+  }
+  .doc-meta {
+    margin-top: 20px;
+    font-size: 13px;
+    color: var(--text-mute);
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .doc-meta span strong { color: var(--text-sub); font-weight: 600; }
+
+  /* ── Table of Contents ─────────────────────────────────────── */
+  .toc {
+    background: var(--bg-alt);
+    border: 1px solid var(--border-lt);
+    border-left: 3px solid var(--accent);
+    padding: 16px 24px;
+    margin: 32px 0;
+    font-size: 14px;
+  }
+  .toc-title {
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .toc ol { margin: 0; padding-left: 20px; }
+  .toc ol ol { margin-top: 4px; }
+  .toc li { margin: 4px 0; }
+  .toc a { color: var(--text); }
+  .toc a:hover { color: var(--accent); }
+
+  /* ── Executive summary ─────────────────────────────────────── */
+  .exec-summary {
+    background: var(--accent-bg);
+    border: 1px solid #d7be84;
+    border-radius: 4px;
+    padding: 20px 24px;
+    margin: 24px 0 32px;
+  }
+  .exec-summary h3 {
+    margin-top: 0;
+    color: var(--accent);
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: var(--font-body);
+  }
+  .exec-summary ul { margin: 8px 0 0; padding-left: 22px; }
+  .exec-summary li { margin: 6px 0; }
+
+  /* ── Section numbering ─────────────────────────────────────── */
+  .section-num {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    margin-right: 10px;
+    font-weight: 700;
+  }
+
+  /* ── Tables ────────────────────────────────────────────────── */
+  .tbl-wrapper {
+    margin: 16px 0 8px;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  th, td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-lt);
+    vertical-align: middle;
+  }
+  thead th {
+    background: var(--bg-alt);
+    color: var(--text-sub);
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody tr:nth-child(even) { background: var(--bg-alt); }
+  tbody tr:hover { background: #e8d8b3; }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; }
+  td.center, th.center { text-align: center; }
+
+  .tbl-caption {
+    font-size: 12px;
+    color: var(--text-mute);
+    margin: 6px 2px 20px;
+    font-style: italic;
+  }
+  .tbl-caption strong {
+    font-weight: 700;
+    color: var(--text-sub);
+    font-style: normal;
+    margin-right: 4px;
+  }
+
+  /* ── Status indicators ─────────────────────────────────────── */
+  .pass  { color: var(--status-pass); font-weight: 600; }
+  .warn  { color: var(--status-warn); font-weight: 600; }
+  .fail  { color: var(--status-fail); font-weight: 600; }
+  .mute  { color: var(--status-mute); }
+  .good  { color: var(--status-pass); font-weight: 600; }
+  .bad   { color: var(--status-fail); font-weight: 600; }
+
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border: 1px solid;
+  }
+  .pill-good { color: var(--status-pass); border-color: var(--status-pass); background: rgba(26, 127, 55, 0.08); }
+  .pill-bad  { color: var(--status-fail); border-color: var(--status-fail); background: rgba(182, 35, 36, 0.08); }
+  .pill-warn { color: var(--status-warn); border-color: var(--status-warn); background: rgba(154, 103, 0, 0.08); }
+  .pill-info { color: var(--status-info); border-color: var(--status-info); background: rgba(9, 105, 218, 0.08); }
+  .pill-mute { color: var(--text-mute); border-color: var(--border); background: var(--bg-alt); }
+
+  .rank {
+    display: inline-block;
+    width: 22px; height: 22px;
+    line-height: 22px;
+    text-align: center;
+    border-radius: 50%;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    color: var(--text-sub);
+    font-weight: 700;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    margin-right: 6px;
+  }
+  tbody tr:first-child .rank {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  /* ── F1 score bars ─────────────────────────────────────────── */
+  .score-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 180px;
+  }
+  .bar-track {
+    flex: 1;
+    height: 6px;
+    background: var(--bg-alt);
+    border: 1px solid var(--border-lt);
+    border-radius: 3px;
+    overflow: hidden;
+    min-width: 100px;
+  }
+  .bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  .bar-fill.low { background: var(--status-fail); }
+  .bar-fill.med { background: var(--status-warn); }
+  .bar-fill.high { background: var(--status-pass); }
+  .score-num { font-weight: 700; font-size: 13px; min-width: 42px; text-align: right; }
+
+  /* ── Model detail card ─────────────────────────────────────── */
+  .model-detail {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px 24px;
+    margin: 20px 0 28px;
+    background: var(--bg);
+  }
+  .model-detail-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-lt);
+  }
+  .model-detail-title {
+    font-family: var(--font-head);
+    font-weight: 600;
+    font-size: 18px;
+    color: var(--text);
+    margin: 0;
+  }
+  .model-detail-id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-mute);
+    margin-top: 4px;
+    word-break: break-all;
+  }
+  .model-score-display {
+    text-align: right;
+    flex-shrink: 0;
+    margin-left: 24px;
+  }
+  .model-score-display .label {
+    font-size: 10px;
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .model-score-display .value {
+    font-family: var(--font-head);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .model-notes {
+    background: var(--bg-alt);
+    border-left: 3px solid var(--accent-lt);
+    padding: 12px 16px;
+    margin: 12px 0 16px;
+    font-size: 13px;
+    color: var(--text-sub);
+    font-style: italic;
+    border-radius: 0 3px 3px 0;
+  }
+
+  /* ── Statistics grid ───────────────────────────────────────── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .stat {
+    background: var(--bg-alt);
+    border: 1px solid var(--border-lt);
+    border-radius: 3px;
+    padding: 10px 12px;
+  }
+  .stat-label {
+    font-size: 10px;
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .stat-value {
+    font-family: var(--font-head);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+    margin-top: 2px;
+  }
+
+  /* ── Per-binary verdict matrix ─────────────────────────────── */
+  .matrix-container {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 6px 0 4px;
+  }
+  .matrix {
+    display: inline-flex;
+    gap: 3px;
+    padding: 3px 4px;
+    border: 1px solid var(--border-lt);
+    background: var(--bg-alt);
+    border-radius: 3px;
+  }
+  .matrix-cell {
+    width: 16px; height: 16px;
+    border-radius: 2px;
+    display: inline-block;
+    cursor: help;
+  }
+  .m-tp    { background: var(--status-pass); }
+  .m-tn    { background: var(--accent-lt); }
+  .m-fp    { background: var(--status-warn); }
+  .m-fn    { background: var(--status-fail); }
+  .m-unk   { background: var(--status-mute); opacity: 0.6; }
+  .m-blank {
+    background-image: repeating-linear-gradient(
+      45deg,
+      var(--status-fail) 0, var(--status-fail) 3px,
+      #e8c5c5 3px, #e8c5c5 6px
+    );
+  }
+
+  .legend {
+    display: flex;
+    gap: 14px;
+    font-size: 11px;
+    color: var(--text-mute);
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .legend-item .matrix-cell { width: 11px; height: 11px; }
+
+  /* ── Heatmap ───────────────────────────────────────────────── */
+  .heatmap td { text-align: center; font-weight: 500; }
+  .heatmap td:first-child { text-align: left; font-weight: 600; }
+  .hc-perfect { background: #cfe1bd; color: #2f4d18; font-weight: 700; }
+  .hc-high    { background: #e1ecd0; color: #4f7a2f; }
+  .hc-mid     { background: #f2e2b2; color: #8c6210; }
+  .hc-low     { background: #efcfb6; color: #a23a2c; }
+  .hc-fail    { background: #e6b39b; color: #722013; font-weight: 700; }
+  .hc-unk     { background: var(--bg-alt); color: var(--text-mute); }
+
+  /* ── Comparison chart ──────────────────────────────────────── */
+  .chart-wrap {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    padding: 20px 24px 12px;
+    margin: 16px 0 8px;
+  }
+  .chart-title {
+    font-family: var(--font-head);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-sub);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 14px;
+  }
+  .chart-row {
+    display: grid;
+    grid-template-columns: 220px 1fr 60px;
+    align-items: center;
+    gap: 12px;
+    margin: 6px 0;
+    font-size: 13px;
+  }
+  .chart-label { color: var(--text-sub); font-weight: 600; text-align: right; }
+  .chart-bar-track {
+    background: var(--bg-alt);
+    border: 1px solid var(--border-lt);
+    border-radius: 3px;
+    height: 18px;
+    position: relative;
+    overflow: hidden;
+  }
+  .chart-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-lt));
+    border-radius: 2px 0 0 2px;
+  }
+  .chart-bar-fill.raw-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    background: repeating-linear-gradient(
+      135deg, rgba(255,255,255,0.4) 0 4px,
+      rgba(255,255,255,0) 4px 8px
+    );
+    border-right: 1px dashed rgba(255,255,255,0.7);
+  }
+  .chart-value { font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .chart-legend {
+    margin-top: 12px;
+    font-size: 11px;
+    color: var(--text-mute);
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .chart-legend .swatch {
+    display: inline-block;
+    width: 14px; height: 10px;
+    vertical-align: middle;
+    margin-right: 4px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+  }
+  .chart-legend .swatch.eff { background: linear-gradient(90deg, var(--accent), var(--accent-lt)); }
+  .chart-legend .swatch.raw {
+    background: var(--accent);
+    background-image: repeating-linear-gradient(
+      135deg, rgba(255,255,255,0.4) 0 4px,
+      rgba(255,255,255,0) 4px 8px
+    );
+  }
+
+  /* ── Footnotes & references ────────────────────────────────── */
+  .footnote-ref {
+    font-size: 0.7em;
+    vertical-align: super;
+    color: var(--accent-lt);
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .footnotes {
+    font-size: 12px;
+    color: var(--text-sub);
+    border-top: 1px solid var(--border-lt);
+    padding-top: 16px;
+    margin-top: 40px;
+  }
+  .footnotes ol { padding-left: 22px; }
+  .footnotes li { margin: 4px 0; }
+
+  .footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-mute);
+    text-align: center;
+  }
+
+  /* ── Print styles ──────────────────────────────────────────── */
+  @media print {
+    body { font-size: 11pt; color: black; background: white; }
+    .container { max-width: none; padding: 0; }
+    h1 { font-size: 20pt; }
+    h2 { font-size: 14pt; page-break-after: avoid; }
+    h3 { font-size: 12pt; page-break-after: avoid; }
+    .model-detail, .tbl-wrapper, .exec-summary { page-break-inside: avoid; }
+    a { color: black; border-bottom: none; }
+    .toc, .legend { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header class="doc-header">
+<h1>Agent-G Juliet Benchmark</h1>
+<p class="doc-subtitle">A comparative evaluation of large language models on cheat-resistant memory-safety vulnerability analysis</p>
+<div class="doc-meta">
+<span><strong>Report date:</strong> April 08, 2026</span>
+<span><strong>Models evaluated:</strong> 6</span>
+<span><strong>Test corpus:</strong> new30 (30 anonymized ELF-x86_64 binaries)</span>
+<span><strong>Revision:</strong> 20260408-1304</span>
+</div>
+</header>
+<nav class="toc" aria-label="Table of contents">
+<div class="toc-title">Contents</div>
+<ol>
+<li><a href="#exec">Summary</a></li>
+<li><a href="#sec2">Results</a></li>
+<li><a href="#sec3">Per-CWE breakdown</a></li>
+<li><a href="#sec4">Per-model detail</a></li>
+<li><a href="#sec5">Model compatibility notes</a></li>
+</ol>
+</nav>
+<section id="exec">
+<div class="exec-summary">
+<h3>Summary</h3>
+<ul>
+<li><strong>Top performer:</strong> <em>Claude Opus 4.6 (blind sub-agents, leak-fixed)</em> &mdash; Effective F1 <strong>1.000</strong>, 30/30 binaries correct (0/15 false alarms, 0/15 missed vulnerabilities).</li>
+<li><strong>Corpus:</strong> 6 models evaluated on 30 anonymized ELF-x86_64 Juliet binaries covering 5 CWE categories (bad + good variants of each).</li>
+<li><strong>Clean data:</strong> harness is leak-free &mdash; Juliet scaffold strings are masked, DWARF parameter names are stripped, and the <code>/health</code> endpoint is redacted. See the methodology note below.</li>
+<li><strong>Metric:</strong> <strong>Effective F1</strong> treats UNKNOWN and BLANK responses as wrong (missed bug on a vulnerable binary, false alarm on a safe one). <strong>Raw F1</strong> ignores them and scores only the classified subset.</li>
+</ul>
+</div>
+<div class="exec-summary" style="background:#f4e4c1;border-color:#c8a45d;border-left:4px solid #a23a2c;">
+<h3 style="color:#a23a2c;">&#9888; Data Completeness Notice</h3>
+<p style="margin:8px 0 12px;font-style:normal;color:#5b4830;">Several model runs in this report are <strong>partial</strong> because of third-party API rate limits or daily quota exhaustion. Effective F1 scores for incomplete models undercount true capability &mdash; they charge rate-limited <span class="pill pill-mute">UNK</span> records as wrong answers. The table below shows, for each model, how many records were actually classified vs how many were rate-limited noise.</p>
+<div class="tbl-wrapper" style="background:#fff;">
+<table>
+<thead><tr><th>Model</th><th class="center">Status</th><th class="num">Classified</th><th class="num">Rate-limit UNK</th><th class="num">Model-failure UNK</th><th class="num">Blank</th><th class="num">Coverage</th></tr></thead><tbody>
+<tr>
+<td><strong>Claude Opus 4.6 (blind sub-agents, leak-fixed)</strong></td>
+<td class="center"><span class="pill pill-good">COMPLETE</span></td>
+<td class="num">30 / 30</td>
+<td class="num mute">0</td>
+<td class="num mute">0</td>
+<td class="num mute">0</td>
+<td class="num">100%</td>
+</tr>
+<tr>
+<td><strong>Claude Sonnet 4.5</strong></td>
+<td class="center"><span class="pill pill-good">COMPLETE</span></td>
+<td class="num">29 / 30</td>
+<td class="num mute">0</td>
+<td class="num mute">1</td>
+<td class="num mute">0</td>
+<td class="num">97%</td>
+</tr>
+<tr>
+<td><strong>Gemini 3.1 Flash Lite Preview</strong></td>
+<td class="center"><span class="pill pill-warn">PARTIAL</span></td>
+<td class="num">26 / 30</td>
+<td class="num mute">0</td>
+<td class="num mute">2</td>
+<td class="num mute">2</td>
+<td class="num">87%</td>
+</tr>
+<tr>
+<td><strong>GPT-5.4 (Codex OAuth)</strong></td>
+<td class="center"><span class="pill pill-warn">PARTIAL</span></td>
+<td class="num">27 / 30</td>
+<td class="num mute">0</td>
+<td class="num mute">3</td>
+<td class="num mute">0</td>
+<td class="num">90%</td>
+</tr>
+<tr>
+<td><strong>gemma4:e4b (local, capacity-fixed)</strong></td>
+<td class="center"><span class="pill pill-bad">BLOCKED</span></td>
+<td class="num">12 / 30</td>
+<td class="num mute">0</td>
+<td class="num mute">0</td>
+<td class="num mute">18</td>
+<td class="num">40%</td>
+</tr>
+<tr>
+<td><strong>GPT-5.4 Mini (Codex OAuth)</strong></td>
+<td class="center"><span class="pill pill-good">COMPLETE</span></td>
+<td class="num">29 / 30</td>
+<td class="num mute">0</td>
+<td class="num mute">1</td>
+<td class="num mute">0</td>
+<td class="num">97%</td>
+</tr>
+</tbody></table>
+</div>
+<p style="margin:12px 0 0;font-size:12px;color:#5b4830;font-style:italic;"><strong>Rate-limit UNK</strong> = the model's response was blocked by the provider's HTTP&thinsp;429 / quota policy rather than by any limitation of the model itself. <strong>Model-failure UNK</strong> = the model produced output that could not be parsed into a definite verdict (genuine model failure). Retries for all rate-limited cloud models are scheduled; this report will be regenerated once they complete.</p>
+</div>
+<div class="exec-summary" style="background:#f3e6c8;border-color:#c89656;border-left:4px solid #8c4a1f;"><h3 style="color:#8c4a1f;">What this report measures</h3><p style="margin:8px 0 10px;color:#3a2e1f;font-style:normal;">This is an <strong>Agent-G compatibility benchmark</strong>, not a model capability benchmark. It measures how well each LLM synchronises with the Agent-G runtime on a tool-calling vulnerability-analysis task &mdash; prompt adherence, tool-call formatting, verdict structure, and retry behaviour all contribute to the score. A model may be highly capable on other benchmarks yet score poorly here if its output formatting conflicts with Agent-G's parser, or if its reasoning-token economy conflicts with the iterative tool-call loop. Conversely, a model tuned to Agent-G's conventions can outperform objectively stronger models.</p><p style="margin:8px 0 0;color:#3a2e1f;font-style:normal;"><strong>Pipeline:</strong> (1) Collect Juliet test samples from the NIST Test Suite &rarr; (2) Strip and sanitise them to prevent ground-truth leakage &mdash; symbols renamed, DWARF param names stripped, scaffold strings masked, filenames hashed, <code>/health</code> redacted &rarr; (3) Feed each sample to Agent-G under the model being tested &rarr; (4) Parse the model's free-text investigation report into a structured <code>VULNERABLE</code> / <code>NOT_VULNERABLE</code> / <code>UNKNOWN</code> / <code>BLANK</code> verdict and score it against the manifest ground truth. Ground truth is never visible to the model.</p></div>
+</section>
+<section>
+<h2 id="sec2"><span class="section-num">1.</span>Results</h2>
+<p>6 model runs on 30 binaries, sorted by Effective F1 (descending). Rank&nbsp;1 is highlighted. <span class="mute">*</span> next to a Raw F1 value means the score excludes one or more UNKNOWN / BLANK outcomes; see Figure&nbsp;1 for the visual gap between Effective and Raw F1.</p>
+<div class="tbl-wrapper">
+<table>
+<thead><tr>
+<th class="center">Rank</th>
+<th class="">Model</th>
+<th class="">Family</th>
+<th class="">Effective F1</th>
+<th class="">Raw F1</th>
+<th class="num">Accuracy</th>
+<th class="center">TP</th>
+<th class="center">TN</th>
+<th class="center">FP</th>
+<th class="center">FN</th>
+<th class="center">UNK</th>
+<th class="center">BLANK</th>
+<th class="num">Avg Time</th>
+<th class="num">Avg Tools</th>
+</tr></thead><tbody>
+<tr>
+<td class="center"><span class="rank">1</span></td>
+<td><strong>Claude Opus 4.6 (blind sub-agents, leak-fixed)</strong><div class="mute" style="font-size:11px;margin-top:2px;">claude-opus-4-6 via Task tool</div></td>
+<td>anthropic</td>
+<td><span class="score-bar">  <span class="bar-track"><span class="bar-fill high" style="width:100%;"></span></span>  <span class="score-num">1.000</span></span></td>
+<td class="num">1.000</td>
+<td class="num">100.0%</td>
+<td class="center good">15</td>
+<td class="center good">15</td>
+<td class="center warn">0</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="num">0&thinsp;s</td>
+<td class="num">3.6</td>
+</tr>
+<tr>
+<td class="center"><span class="rank">2</span></td>
+<td><strong>Claude Sonnet 4.5</strong><div class="mute" style="font-size:11px;margin-top:2px;">claude-sonnet-4-5</div></td>
+<td>anthropic</td>
+<td><span class="score-bar">  <span class="bar-track"><span class="bar-fill med" style="width:62%;"></span></span>  <span class="score-num">0.629</span></span></td>
+<td class="num">0.647<span class="mute">*</span></td>
+<td class="num">56.7%</td>
+<td class="center good">11</td>
+<td class="center good">6</td>
+<td class="center warn">8</td>
+<td class="center bad">4</td>
+<td class="center mute">1</td>
+<td class="center mute">0</td>
+<td class="num">113&thinsp;s</td>
+<td class="num">5.6</td>
+</tr>
+<tr>
+<td class="center"><span class="rank">3</span></td>
+<td><strong>Gemini 3.1 Flash Lite Preview</strong><div class="mute" style="font-size:11px;margin-top:2px;">gemini-3.1-flash-lite-preview</div></td>
+<td>google</td>
+<td><span class="score-bar">  <span class="bar-track"><span class="bar-fill med" style="width:61%;"></span></span>  <span class="score-num">0.611</span></span></td>
+<td class="num">0.688<span class="mute">*</span></td>
+<td class="num">53.3%</td>
+<td class="center good">11</td>
+<td class="center good">5</td>
+<td class="center warn">8</td>
+<td class="center bad">2</td>
+<td class="center mute">2</td>
+<td class="center bad">2</td>
+<td class="num">18&thinsp;s</td>
+<td class="num">3.8</td>
+</tr>
+<tr>
+<td class="center"><span class="rank">4</span></td>
+<td><strong>GPT-5.4 (Codex OAuth)</strong><div class="mute" style="font-size:11px;margin-top:2px;">gpt-5.4</div></td>
+<td>custom_api</td>
+<td><span class="score-bar">  <span class="bar-track"><span class="bar-fill med" style="width:58%;"></span></span>  <span class="score-num">0.583</span></span></td>
+<td class="num">0.667<span class="mute">*</span></td>
+<td class="num">66.7%</td>
+<td class="center good">7</td>
+<td class="center good">13</td>
+<td class="center warn">1</td>
+<td class="center bad">6</td>
+<td class="center mute">3</td>
+<td class="center mute">0</td>
+<td class="num">92&thinsp;s</td>
+<td class="num">14.1</td>
+</tr>
+<tr>
+<td class="center"><span class="rank">5</span></td>
+<td><strong>gemma4:e4b (local, capacity-fixed)</strong><div class="mute" style="font-size:11px;margin-top:2px;">gemma4:e4b</div></td>
+<td>ollama</td>
+<td><span class="score-bar">  <span class="bar-track"><span class="bar-fill low" style="width:27%;"></span></span>  <span class="score-num">0.276</span></span></td>
+<td class="num">0.727<span class="mute">*</span></td>
+<td class="num">30.0%</td>
+<td class="center good">4</td>
+<td class="center good">5</td>
+<td class="center warn">0</td>
+<td class="center bad">3</td>
+<td class="center mute">0</td>
+<td class="center bad">18</td>
+<td class="num">23&thinsp;s</td>
+<td class="num">3.4</td>
+</tr>
+<tr>
+<td class="center"><span class="rank">6</span></td>
+<td><strong>GPT-5.4 Mini (Codex OAuth)</strong><div class="mute" style="font-size:11px;margin-top:2px;">gpt-5.4-mini</div></td>
+<td>custom_api</td>
+<td><span class="score-bar">  <span class="bar-track"><span class="bar-fill low" style="width:22%;"></span></span>  <span class="score-num">0.222</span></span></td>
+<td class="num">0.235<span class="mute">*</span></td>
+<td class="num">53.3%</td>
+<td class="center good">2</td>
+<td class="center good">14</td>
+<td class="center warn">0</td>
+<td class="center bad">13</td>
+<td class="center mute">1</td>
+<td class="center mute">0</td>
+<td class="num">66&thinsp;s</td>
+<td class="num">14.8</td>
+</tr>
+</tbody></table>
+</div>
+<p class="tbl-caption"><strong>Table 1.</strong> Aggregate results for 6 model runs, sorted by Effective F1. <span class="mute">*</span> denotes Raw F1 computed with UNKNOWN/BLANK verdicts excluded from the denominator.</p>
+<h4>Visual comparison</h4>
+<div class="chart-wrap">
+<div class="chart-title">Effective F1 by model (sorted)</div>
+<div class="chart-row">
+<div class="chart-label">Claude Opus 4.6 (blind sub-agents, leak-fixed)</div>
+<div class="chart-bar-track">
+<div class="chart-bar-fill" style="width:100.0%;"></div>
+</div>
+<div class="chart-value">1.000</div>
+</div>
+<div class="chart-row">
+<div class="chart-label">Claude Sonnet 4.5</div>
+<div class="chart-bar-track">
+<div class="chart-bar-fill" style="width:62.9%;"></div>
+<div class="chart-bar-fill raw-overlay" style="width:64.7%;"></div>
+</div>
+<div class="chart-value">0.629</div>
+</div>
+<div class="chart-row">
+<div class="chart-label">Gemini 3.1 Flash Lite Preview</div>
+<div class="chart-bar-track">
+<div class="chart-bar-fill" style="width:61.1%;"></div>
+<div class="chart-bar-fill raw-overlay" style="width:68.8%;"></div>
+</div>
+<div class="chart-value">0.611</div>
+</div>
+<div class="chart-row">
+<div class="chart-label">GPT-5.4 (Codex OAuth)</div>
+<div class="chart-bar-track">
+<div class="chart-bar-fill" style="width:58.3%;"></div>
+<div class="chart-bar-fill raw-overlay" style="width:66.7%;"></div>
+</div>
+<div class="chart-value">0.583</div>
+</div>
+<div class="chart-row">
+<div class="chart-label">gemma4:e4b (local, capacity-fixed)</div>
+<div class="chart-bar-track">
+<div class="chart-bar-fill" style="width:27.6%;"></div>
+<div class="chart-bar-fill raw-overlay" style="width:72.7%;"></div>
+</div>
+<div class="chart-value">0.276</div>
+</div>
+<div class="chart-row">
+<div class="chart-label">GPT-5.4 Mini (Codex OAuth)</div>
+<div class="chart-bar-track">
+<div class="chart-bar-fill" style="width:22.2%;"></div>
+<div class="chart-bar-fill raw-overlay" style="width:23.5%;"></div>
+</div>
+<div class="chart-value">0.222</div>
+</div>
+<div class="chart-legend"><span><span class="swatch eff"></span>Effective F1 (UNK/BLANK = wrong)</span><span><span class="swatch raw"></span>Raw F1 (classified subset only)</span></div>
+</div>
+<p class="tbl-caption"><strong>Figure 1.</strong> Solid bar = Effective F1 (UNK/BLANK counted as wrong). Striped overlay (where present) shows the higher Raw F1 the model would attain if its UNK/BLANK responses were excluded entirely &mdash; the gap visualises the cost of failing to commit to a verdict.</p>
+<h4>Verdict category legend</h4>
+<div class="legend" style="margin-bottom:12px;">
+<div class="legend-item"><span class="pill pill-good">TP</span> True positive &mdash; vulnerable binary correctly flagged</div>
+<div class="legend-item"><span class="pill pill-good">TN</span> True negative &mdash; safe binary correctly cleared</div>
+<div class="legend-item"><span class="pill pill-warn">FP</span> False positive &mdash; safe binary over-flagged</div>
+<div class="legend-item"><span class="pill pill-bad">FN</span> False negative &mdash; vulnerable binary missed</div>
+<div class="legend-item"><span class="pill pill-mute">UNK</span> Response unparseable</div>
+<div class="legend-item"><span class="pill pill-bad">BLANK</span> Blank response (thinking budget exhausted)</div>
+</div>
+</section>
+<section>
+<h2 id="sec3"><span class="section-num">2.</span>Per-CWE Performance</h2>
+<p>Correct verdicts (TP&thinsp;+&thinsp;TN) out of binaries per CWE category. UNKNOWN and BLANK are counted as incorrect.</p>
+<div class="tbl-wrapper">
+<table class="heatmap">
+<thead><tr><th>Model</th>
+<th class="center">CWE-134<br><span style="font-weight:400;text-transform:none;color:var(--text-mute);font-size:10px;">Uncontrolled</span></th>
+<th class="center">CWE-190<br><span style="font-weight:400;text-transform:none;color:var(--text-mute);font-size:10px;">Integer</span></th>
+<th class="center">CWE-369<br><span style="font-weight:400;text-transform:none;color:var(--text-mute);font-size:10px;">Divide</span></th>
+<th class="center">CWE-457<br><span style="font-weight:400;text-transform:none;color:var(--text-mute);font-size:10px;">Use</span></th>
+<th class="center">CWE-78<br><span style="font-weight:400;text-transform:none;color:var(--text-mute);font-size:10px;">OS</span></th>
+<th class="center">Total</th></tr></thead><tbody>
+<tr>
+<td>Claude Opus 4.6 (blind sub-agents, leak-fixed)</td>
+<td class="hc-perfect">6/6</td>
+<td class="hc-perfect">6/6</td>
+<td class="hc-perfect">6/6</td>
+<td class="hc-perfect">6/6</td>
+<td class="hc-perfect">6/6</td>
+<td class="hc-perfect"><strong>30/30</strong></td>
+</tr>
+<tr>
+<td>Claude Sonnet 4.5</td>
+<td class="hc-low">2/6</td>
+<td class="hc-mid">4/6</td>
+<td class="hc-mid">4/6</td>
+<td class="hc-low">2/6</td>
+<td class="hc-high">5/6</td>
+<td class="hc-mid"><strong>17/30</strong></td>
+</tr>
+<tr>
+<td>Gemini 3.1 Flash Lite Preview</td>
+<td class="hc-mid">3/6</td>
+<td class="hc-low">2/6</td>
+<td class="hc-mid">4/6</td>
+<td class="hc-low">2/6</td>
+<td class="hc-high">5/6</td>
+<td class="hc-mid"><strong>16/30</strong></td>
+</tr>
+<tr>
+<td>GPT-5.4 (Codex OAuth)</td>
+<td class="hc-perfect">6/6</td>
+<td class="hc-mid">3/6</td>
+<td class="hc-mid">3/6</td>
+<td class="hc-mid">3/6</td>
+<td class="hc-high">5/6</td>
+<td class="hc-mid"><strong>20/30</strong></td>
+</tr>
+<tr>
+<td>gemma4:e4b (local, capacity-fixed)</td>
+<td class="hc-mid">3/6</td>
+<td class="hc-low">2/6</td>
+<td class="hc-low">2/6</td>
+<td class="hc-low">1/6</td>
+<td class="hc-low">1/6</td>
+<td class="hc-low"><strong>9/30</strong></td>
+</tr>
+<tr>
+<td>GPT-5.4 Mini (Codex OAuth)</td>
+<td class="hc-mid">4/6</td>
+<td class="hc-mid">3/6</td>
+<td class="hc-mid">3/6</td>
+<td class="hc-low">2/6</td>
+<td class="hc-mid">4/6</td>
+<td class="hc-mid"><strong>16/30</strong></td>
+</tr>
+</tbody></table>
+</div>
+<p class="tbl-caption"><strong>Table 2.</strong> Per-CWE correct-verdict ratios. Darker green = higher accuracy on that category.</p>
+</section>
+<section>
+<h2 id="sec4"><span class="section-num">3.</span>Per-Model Detail</h2>
+<p>Binary-by-binary verdict matrix, aggregate stats, and per-CWE breakdown for each model.</p>
+<h3 id="sec4-1">3.1 Claude Opus 4.6 (blind sub-agents, leak-fixed)</h3>
+<div class="model-detail">
+<div class="model-detail-head">
+<div><div class="model-detail-title">Claude Opus 4.6 (blind sub-agents, leak-fixed)</div><div class="model-detail-id">Model ID: claude-opus-4-6 via Task tool</div><div class="model-detail-id">Family: anthropic &middot; Tier: blind sub-agent harness on hardened corpus</div></div>
+<div class="model-score-display">
+<div class="label">Effective F1</div>
+<div class="value">1.000</div>
+</div>
+</div>
+<div class="model-notes">6 parallel Opus 4.6 sub-agents, 5 binaries each via ghidra_oneshot.py. Hardened corpus: LeakFilter masks decompile string literals, JulietAnonymizer strips DWARF params, /health returns [redacted]. First Claude run that cannot read 'Calling bad()...' leaks.</div>
+<div class="stat-grid">
+<div class="stat"><div class="stat-label">Accuracy</div><div class="stat-value">100.0%</div></div>
+<div class="stat"><div class="stat-label">Precision</div><div class="stat-value">1.000</div></div>
+<div class="stat"><div class="stat-label">Recall</div><div class="stat-value">1.000</div></div>
+<div class="stat"><div class="stat-label">Total Time</div><div class="stat-value">0 s</div></div>
+<div class="stat"><div class="stat-label">Tool Calls / Bin</div><div class="stat-value">3.6</div></div>
+<div class="stat"><div class="stat-label">Iterations / Bin</div><div class="stat-value">0.0</div></div>
+</div>
+<h4>Per-Binary Verdict Matrix</h4>
+<div class="matrix-container">
+<div class="matrix">
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-tn" title="CWE-78 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-78 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-78 good: True Negative"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-tn" title="CWE-134 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-134 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-134 good: True Negative"></span>
+<span class="matrix-cell m-tp" title="CWE-190 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-190 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-190 bad: True Positive"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-tp" title="CWE-369 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-369 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-369 bad: True Positive"></span>
+<span class="matrix-cell m-tn" title="CWE-369 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-369 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-369 good: True Negative"></span>
+<span class="matrix-cell m-tp" title="CWE-457 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-457 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-457 bad: True Positive"></span>
+<span class="matrix-cell m-tn" title="CWE-457 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-457 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-457 good: True Negative"></span>
+</div>
+<div class="legend">
+<div class="legend-item"><span class="matrix-cell m-tp"></span>TP</div>
+<div class="legend-item"><span class="matrix-cell m-tn"></span>TN</div>
+<div class="legend-item"><span class="matrix-cell m-fp"></span>FP</div>
+<div class="legend-item"><span class="matrix-cell m-fn"></span>FN</div>
+<div class="legend-item"><span class="matrix-cell m-unk"></span>UNK</div>
+<div class="legend-item"><span class="matrix-cell m-blank"></span>BLANK</div>
+</div>
+</div>
+<h4>Per-CWE Breakdown</h4>
+<div class="tbl-wrapper"><table>
+<thead><tr><th>CWE</th><th class="center">TP</th><th class="center">TN</th><th class="center">FP</th><th class="center">FN</th><th class="center">UNK</th><th class="center">BLANK</th><th class="center">Correct / Total</th></tr></thead><tbody>
+<tr><td><strong>CWE-134</strong></td>
+<td class="center good">3</td>
+<td class="center good">3</td>
+<td class="center warn">0</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>6/6</strong></td></tr>
+<tr><td><strong>CWE-190</strong></td>
+<td class="center good">3</td>
+<td class="center good">3</td>
+<td class="center warn">0</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>6/6</strong></td></tr>
+<tr><td><strong>CWE-369</strong></td>
+<td class="center good">3</td>
+<td class="center good">3</td>
+<td class="center warn">0</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>6/6</strong></td></tr>
+<tr><td><strong>CWE-457</strong></td>
+<td class="center good">3</td>
+<td class="center good">3</td>
+<td class="center warn">0</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>6/6</strong></td></tr>
+<tr><td><strong>CWE-78</strong></td>
+<td class="center good">3</td>
+<td class="center good">3</td>
+<td class="center warn">0</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>6/6</strong></td></tr>
+</tbody></table></div>
+</div>
+<h3 id="sec4-2">3.2 Claude Sonnet 4.5</h3>
+<div class="model-detail">
+<div class="model-detail-head">
+<div><div class="model-detail-title">Claude Sonnet 4.5</div><div class="model-detail-id">Model ID: claude-sonnet-4-5</div><div class="model-detail-id">Family: anthropic &middot; Tier: cloud · flagship · Anthropic</div></div>
+<div class="model-score-display">
+<div class="label">Effective F1</div>
+<div class="value">0.629</div>
+</div>
+</div>
+<div class="model-notes">Clean run with all 3 leak fixes. First non-blind Anthropic run via Agent-G runtime</div>
+<div class="stat-grid">
+<div class="stat"><div class="stat-label">Accuracy</div><div class="stat-value">56.7%</div></div>
+<div class="stat"><div class="stat-label">Precision</div><div class="stat-value">0.550</div></div>
+<div class="stat"><div class="stat-label">Recall</div><div class="stat-value">0.733</div></div>
+<div class="stat"><div class="stat-label">Total Time</div><div class="stat-value">3395 s</div></div>
+<div class="stat"><div class="stat-label">Tool Calls / Bin</div><div class="stat-value">5.6</div></div>
+<div class="stat"><div class="stat-label">Iterations / Bin</div><div class="stat-value">2.6</div></div>
+</div>
+<h4>Per-Binary Verdict Matrix</h4>
+<div class="matrix-container">
+<div class="matrix">
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-tn" title="CWE-78 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-78 good: True Negative"></span>
+<span class="matrix-cell m-fp" title="CWE-78 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-fn" title="CWE-134 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fp" title="CWE-134 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-fp" title="CWE-134 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-fp" title="CWE-134 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-tp" title="CWE-190 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-190 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-190 bad: True Positive"></span>
+<span class="matrix-cell m-fp" title="CWE-190 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-fp" title="CWE-190 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-tp" title="CWE-369 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-369 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-369 bad: True Positive"></span>
+<span class="matrix-cell m-fp" title="CWE-369 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-tn" title="CWE-369 good: True Negative"></span>
+<span class="matrix-cell m-unk" title="CWE-369 good: UNKNOWN"></span>
+<span class="matrix-cell m-fn" title="CWE-457 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-457 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-457 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-tn" title="CWE-457 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-457 good: True Negative"></span>
+<span class="matrix-cell m-fp" title="CWE-457 good: False Positive (over-flagged)"></span>
+</div>
+<div class="legend">
+<div class="legend-item"><span class="matrix-cell m-tp"></span>TP</div>
+<div class="legend-item"><span class="matrix-cell m-tn"></span>TN</div>
+<div class="legend-item"><span class="matrix-cell m-fp"></span>FP</div>
+<div class="legend-item"><span class="matrix-cell m-fn"></span>FN</div>
+<div class="legend-item"><span class="matrix-cell m-unk"></span>UNK</div>
+<div class="legend-item"><span class="matrix-cell m-blank"></span>BLANK</div>
+</div>
+</div>
+<h4>Per-CWE Breakdown</h4>
+<div class="tbl-wrapper"><table>
+<thead><tr><th>CWE</th><th class="center">TP</th><th class="center">TN</th><th class="center">FP</th><th class="center">FN</th><th class="center">UNK</th><th class="center">BLANK</th><th class="center">Correct / Total</th></tr></thead><tbody>
+<tr><td><strong>CWE-134</strong></td>
+<td class="center good">2</td>
+<td class="center good">0</td>
+<td class="center warn">3</td>
+<td class="center bad">1</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>2/6</strong></td></tr>
+<tr><td><strong>CWE-190</strong></td>
+<td class="center good">3</td>
+<td class="center good">1</td>
+<td class="center warn">2</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>4/6</strong></td></tr>
+<tr><td><strong>CWE-369</strong></td>
+<td class="center good">3</td>
+<td class="center good">1</td>
+<td class="center warn">1</td>
+<td class="center bad">0</td>
+<td class="center mute">1</td>
+<td class="center mute">0</td>
+<td class="center"><strong>4/6</strong></td></tr>
+<tr><td><strong>CWE-457</strong></td>
+<td class="center good">0</td>
+<td class="center good">2</td>
+<td class="center warn">1</td>
+<td class="center bad">3</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>2/6</strong></td></tr>
+<tr><td><strong>CWE-78</strong></td>
+<td class="center good">3</td>
+<td class="center good">2</td>
+<td class="center warn">1</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>5/6</strong></td></tr>
+</tbody></table></div>
+</div>
+<h3 id="sec4-3">3.3 Gemini 3.1 Flash Lite Preview</h3>
+<div class="model-detail">
+<div class="model-detail-head">
+<div><div class="model-detail-title">Gemini 3.1 Flash Lite Preview</div><div class="model-detail-id">Model ID: gemini-3.1-flash-lite-preview</div><div class="model-detail-id">Family: google &middot; Tier: cloud · cheap tier · Google</div></div>
+<div class="model-score-display">
+<div class="label">Effective F1</div>
+<div class="value">0.611</div>
+</div>
+</div>
+<div class="model-notes">Clean run with all 3 leak fixes. Google daily quota fresh as of launch time</div>
+<div class="stat-grid">
+<div class="stat"><div class="stat-label">Accuracy</div><div class="stat-value">53.3%</div></div>
+<div class="stat"><div class="stat-label">Precision</div><div class="stat-value">0.524</div></div>
+<div class="stat"><div class="stat-label">Recall</div><div class="stat-value">0.733</div></div>
+<div class="stat"><div class="stat-label">Total Time</div><div class="stat-value">547 s</div></div>
+<div class="stat"><div class="stat-label">Tool Calls / Bin</div><div class="stat-value">3.8</div></div>
+<div class="stat"><div class="stat-label">Iterations / Bin</div><div class="stat-value">3.2</div></div>
+</div>
+<h4>Per-Binary Verdict Matrix</h4>
+<div class="matrix-container">
+<div class="matrix">
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-tn" title="CWE-78 good: True Negative"></span>
+<span class="matrix-cell m-blank" title="CWE-78 good: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-tn" title="CWE-78 good: True Negative"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-fp" title="CWE-134 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-blank" title="CWE-134 good: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-fp" title="CWE-134 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-fn" title="CWE-190 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-tp" title="CWE-190 bad: True Positive"></span>
+<span class="matrix-cell m-unk" title="CWE-190 bad: UNKNOWN"></span>
+<span class="matrix-cell m-fp" title="CWE-190 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-fp" title="CWE-190 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-tp" title="CWE-369 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-369 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-369 bad: True Positive"></span>
+<span class="matrix-cell m-fp" title="CWE-369 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-fp" title="CWE-369 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-tn" title="CWE-369 good: True Negative"></span>
+<span class="matrix-cell m-tp" title="CWE-457 bad: True Positive"></span>
+<span class="matrix-cell m-unk" title="CWE-457 bad: UNKNOWN"></span>
+<span class="matrix-cell m-fn" title="CWE-457 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fp" title="CWE-457 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-tn" title="CWE-457 good: True Negative"></span>
+<span class="matrix-cell m-fp" title="CWE-457 good: False Positive (over-flagged)"></span>
+</div>
+<div class="legend">
+<div class="legend-item"><span class="matrix-cell m-tp"></span>TP</div>
+<div class="legend-item"><span class="matrix-cell m-tn"></span>TN</div>
+<div class="legend-item"><span class="matrix-cell m-fp"></span>FP</div>
+<div class="legend-item"><span class="matrix-cell m-fn"></span>FN</div>
+<div class="legend-item"><span class="matrix-cell m-unk"></span>UNK</div>
+<div class="legend-item"><span class="matrix-cell m-blank"></span>BLANK</div>
+</div>
+</div>
+<h4>Per-CWE Breakdown</h4>
+<div class="tbl-wrapper"><table>
+<thead><tr><th>CWE</th><th class="center">TP</th><th class="center">TN</th><th class="center">FP</th><th class="center">FN</th><th class="center">UNK</th><th class="center">BLANK</th><th class="center">Correct / Total</th></tr></thead><tbody>
+<tr><td><strong>CWE-134</strong></td>
+<td class="center good">3</td>
+<td class="center good">0</td>
+<td class="center warn">2</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center bad">1</td>
+<td class="center"><strong>3/6</strong></td></tr>
+<tr><td><strong>CWE-190</strong></td>
+<td class="center good">1</td>
+<td class="center good">1</td>
+<td class="center warn">2</td>
+<td class="center bad">1</td>
+<td class="center mute">1</td>
+<td class="center mute">0</td>
+<td class="center"><strong>2/6</strong></td></tr>
+<tr><td><strong>CWE-369</strong></td>
+<td class="center good">3</td>
+<td class="center good">1</td>
+<td class="center warn">2</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>4/6</strong></td></tr>
+<tr><td><strong>CWE-457</strong></td>
+<td class="center good">1</td>
+<td class="center good">1</td>
+<td class="center warn">2</td>
+<td class="center bad">1</td>
+<td class="center mute">1</td>
+<td class="center mute">0</td>
+<td class="center"><strong>2/6</strong></td></tr>
+<tr><td><strong>CWE-78</strong></td>
+<td class="center good">3</td>
+<td class="center good">2</td>
+<td class="center warn">0</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center bad">1</td>
+<td class="center"><strong>5/6</strong></td></tr>
+</tbody></table></div>
+</div>
+<h3 id="sec4-4">3.4 GPT-5.4 (Codex OAuth)</h3>
+<div class="model-detail">
+<div class="model-detail-head">
+<div><div class="model-detail-title">GPT-5.4 (Codex OAuth)</div><div class="model-detail-id">Model ID: gpt-5.4</div><div class="model-detail-id">Family: custom_api &middot; Tier: cloud · OpenAI · ChatGPT backend</div></div>
+<div class="model-score-display">
+<div class="label">Effective F1</div>
+<div class="value">0.583</div>
+</div>
+</div>
+<div class="model-notes">Clean run with all 3 leak fixes. gpt-5.4 (full, not mini) via chatgpt.com backend. 10s request delay, reasoning=low. Replaces the GPT-5 throttled run which resolved to gpt-5-2025-08-07 and produced 9 TP / 11 UNK with conservative bias.</div>
+<div class="stat-grid">
+<div class="stat"><div class="stat-label">Accuracy</div><div class="stat-value">66.7%</div></div>
+<div class="stat"><div class="stat-label">Precision</div><div class="stat-value">0.778</div></div>
+<div class="stat"><div class="stat-label">Recall</div><div class="stat-value">0.467</div></div>
+<div class="stat"><div class="stat-label">Total Time</div><div class="stat-value">2750 s</div></div>
+<div class="stat"><div class="stat-label">Tool Calls / Bin</div><div class="stat-value">14.1</div></div>
+<div class="stat"><div class="stat-label">Iterations / Bin</div><div class="stat-value">4.5</div></div>
+</div>
+<h4>Per-Binary Verdict Matrix</h4>
+<div class="matrix-container">
+<div class="matrix">
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-tn" title="CWE-78 good: True Negative"></span>
+<span class="matrix-cell m-fp" title="CWE-78 good: False Positive (over-flagged)"></span>
+<span class="matrix-cell m-tn" title="CWE-78 good: True Negative"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-tn" title="CWE-134 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-134 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-134 good: True Negative"></span>
+<span class="matrix-cell m-fn" title="CWE-190 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-190 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-190 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-unk" title="CWE-369 bad: UNKNOWN"></span>
+<span class="matrix-cell m-fn" title="CWE-369 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-369 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-tn" title="CWE-369 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-369 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-369 good: True Negative"></span>
+<span class="matrix-cell m-unk" title="CWE-457 bad: UNKNOWN"></span>
+<span class="matrix-cell m-fn" title="CWE-457 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-tp" title="CWE-457 bad: True Positive"></span>
+<span class="matrix-cell m-tn" title="CWE-457 good: True Negative"></span>
+<span class="matrix-cell m-unk" title="CWE-457 good: UNKNOWN"></span>
+<span class="matrix-cell m-tn" title="CWE-457 good: True Negative"></span>
+</div>
+<div class="legend">
+<div class="legend-item"><span class="matrix-cell m-tp"></span>TP</div>
+<div class="legend-item"><span class="matrix-cell m-tn"></span>TN</div>
+<div class="legend-item"><span class="matrix-cell m-fp"></span>FP</div>
+<div class="legend-item"><span class="matrix-cell m-fn"></span>FN</div>
+<div class="legend-item"><span class="matrix-cell m-unk"></span>UNK</div>
+<div class="legend-item"><span class="matrix-cell m-blank"></span>BLANK</div>
+</div>
+</div>
+<h4>Per-CWE Breakdown</h4>
+<div class="tbl-wrapper"><table>
+<thead><tr><th>CWE</th><th class="center">TP</th><th class="center">TN</th><th class="center">FP</th><th class="center">FN</th><th class="center">UNK</th><th class="center">BLANK</th><th class="center">Correct / Total</th></tr></thead><tbody>
+<tr><td><strong>CWE-134</strong></td>
+<td class="center good">3</td>
+<td class="center good">3</td>
+<td class="center warn">0</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>6/6</strong></td></tr>
+<tr><td><strong>CWE-190</strong></td>
+<td class="center good">0</td>
+<td class="center good">3</td>
+<td class="center warn">0</td>
+<td class="center bad">3</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>3/6</strong></td></tr>
+<tr><td><strong>CWE-369</strong></td>
+<td class="center good">0</td>
+<td class="center good">3</td>
+<td class="center warn">0</td>
+<td class="center bad">2</td>
+<td class="center mute">1</td>
+<td class="center mute">0</td>
+<td class="center"><strong>3/6</strong></td></tr>
+<tr><td><strong>CWE-457</strong></td>
+<td class="center good">1</td>
+<td class="center good">2</td>
+<td class="center warn">0</td>
+<td class="center bad">1</td>
+<td class="center mute">2</td>
+<td class="center mute">0</td>
+<td class="center"><strong>3/6</strong></td></tr>
+<tr><td><strong>CWE-78</strong></td>
+<td class="center good">3</td>
+<td class="center good">2</td>
+<td class="center warn">1</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>5/6</strong></td></tr>
+</tbody></table></div>
+</div>
+<h3 id="sec4-5">3.5 gemma4:e4b (local, capacity-fixed)</h3>
+<div class="model-detail">
+<div class="model-detail-head">
+<div><div class="model-detail-title">gemma4:e4b (local, capacity-fixed)</div><div class="model-detail-id">Model ID: gemma4:e4b</div><div class="model-detail-id">Family: ollama &middot; Tier: local · small open weight</div></div>
+<div class="model-score-display">
+<div class="label">Effective F1</div>
+<div class="value">0.276</div>
+</div>
+</div>
+<div class="model-notes">Clean run with all 3 leak fixes + e4b mitigations: num_predict=16384, temperature=0.1, BLANK_RESPONSE sentinel emission</div>
+<div class="stat-grid">
+<div class="stat"><div class="stat-label">Accuracy</div><div class="stat-value">30.0%</div></div>
+<div class="stat"><div class="stat-label">Precision</div><div class="stat-value">0.286</div></div>
+<div class="stat"><div class="stat-label">Recall</div><div class="stat-value">0.267</div></div>
+<div class="stat"><div class="stat-label">Total Time</div><div class="stat-value">681 s</div></div>
+<div class="stat"><div class="stat-label">Tool Calls / Bin</div><div class="stat-value">3.4</div></div>
+<div class="stat"><div class="stat-label">Iterations / Bin</div><div class="stat-value">2.3</div></div>
+</div>
+<h4>Per-Binary Verdict Matrix</h4>
+<div class="matrix-container">
+<div class="matrix">
+<span class="matrix-cell m-blank" title="CWE-78 bad: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-blank" title="CWE-78 bad: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-blank" title="CWE-78 good: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-blank" title="CWE-78 good: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-blank" title="CWE-78 good: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-fn" title="CWE-134 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-blank" title="CWE-134 bad: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-blank" title="CWE-134 good: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-tn" title="CWE-134 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-134 good: True Negative"></span>
+<span class="matrix-cell m-fn" title="CWE-190 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-190 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-blank" title="CWE-190 bad: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-blank" title="CWE-190 good: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-blank" title="CWE-369 bad: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-tp" title="CWE-369 bad: True Positive"></span>
+<span class="matrix-cell m-tp" title="CWE-369 bad: True Positive"></span>
+<span class="matrix-cell m-blank" title="CWE-369 good: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-blank" title="CWE-369 good: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-blank" title="CWE-369 good: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-blank" title="CWE-457 bad: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-blank" title="CWE-457 bad: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-blank" title="CWE-457 bad: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-blank" title="CWE-457 good: BLANK (thinking budget exhausted)"></span>
+<span class="matrix-cell m-tn" title="CWE-457 good: True Negative"></span>
+<span class="matrix-cell m-blank" title="CWE-457 good: BLANK (thinking budget exhausted)"></span>
+</div>
+<div class="legend">
+<div class="legend-item"><span class="matrix-cell m-tp"></span>TP</div>
+<div class="legend-item"><span class="matrix-cell m-tn"></span>TN</div>
+<div class="legend-item"><span class="matrix-cell m-fp"></span>FP</div>
+<div class="legend-item"><span class="matrix-cell m-fn"></span>FN</div>
+<div class="legend-item"><span class="matrix-cell m-unk"></span>UNK</div>
+<div class="legend-item"><span class="matrix-cell m-blank"></span>BLANK</div>
+</div>
+</div>
+<h4>Per-CWE Breakdown</h4>
+<div class="tbl-wrapper"><table>
+<thead><tr><th>CWE</th><th class="center">TP</th><th class="center">TN</th><th class="center">FP</th><th class="center">FN</th><th class="center">UNK</th><th class="center">BLANK</th><th class="center">Correct / Total</th></tr></thead><tbody>
+<tr><td><strong>CWE-134</strong></td>
+<td class="center good">1</td>
+<td class="center good">2</td>
+<td class="center warn">0</td>
+<td class="center bad">1</td>
+<td class="center mute">0</td>
+<td class="center bad">2</td>
+<td class="center"><strong>3/6</strong></td></tr>
+<tr><td><strong>CWE-190</strong></td>
+<td class="center good">0</td>
+<td class="center good">2</td>
+<td class="center warn">0</td>
+<td class="center bad">2</td>
+<td class="center mute">0</td>
+<td class="center bad">2</td>
+<td class="center"><strong>2/6</strong></td></tr>
+<tr><td><strong>CWE-369</strong></td>
+<td class="center good">2</td>
+<td class="center good">0</td>
+<td class="center warn">0</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center bad">4</td>
+<td class="center"><strong>2/6</strong></td></tr>
+<tr><td><strong>CWE-457</strong></td>
+<td class="center good">0</td>
+<td class="center good">1</td>
+<td class="center warn">0</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center bad">5</td>
+<td class="center"><strong>1/6</strong></td></tr>
+<tr><td><strong>CWE-78</strong></td>
+<td class="center good">1</td>
+<td class="center good">0</td>
+<td class="center warn">0</td>
+<td class="center bad">0</td>
+<td class="center mute">0</td>
+<td class="center bad">5</td>
+<td class="center"><strong>1/6</strong></td></tr>
+</tbody></table></div>
+</div>
+<h3 id="sec4-6">3.6 GPT-5.4 Mini (Codex OAuth)</h3>
+<div class="model-detail">
+<div class="model-detail-head">
+<div><div class="model-detail-title">GPT-5.4 Mini (Codex OAuth)</div><div class="model-detail-id">Model ID: gpt-5.4-mini</div><div class="model-detail-id">Family: custom_api &middot; Tier: cloud · OpenAI · ChatGPT backend · mini</div></div>
+<div class="model-score-display">
+<div class="label">Effective F1</div>
+<div class="value">0.222</div>
+</div>
+</div>
+<div class="model-notes">Clean run with all 3 leak fixes. gpt-5.4-mini-2026-03-17 via chatgpt.com backend. 10s request delay to stay under rate limit. Low reasoning effort for visible-token budget.</div>
+<div class="stat-grid">
+<div class="stat"><div class="stat-label">Accuracy</div><div class="stat-value">53.3%</div></div>
+<div class="stat"><div class="stat-label">Precision</div><div class="stat-value">0.667</div></div>
+<div class="stat"><div class="stat-label">Recall</div><div class="stat-value">0.133</div></div>
+<div class="stat"><div class="stat-label">Total Time</div><div class="stat-value">1991 s</div></div>
+<div class="stat"><div class="stat-label">Tool Calls / Bin</div><div class="stat-value">14.8</div></div>
+<div class="stat"><div class="stat-label">Iterations / Bin</div><div class="stat-value">4.8</div></div>
+</div>
+<h4>Per-Binary Verdict Matrix</h4>
+<div class="matrix-container">
+<div class="matrix">
+<span class="matrix-cell m-fn" title="CWE-78 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-tp" title="CWE-78 bad: True Positive"></span>
+<span class="matrix-cell m-fn" title="CWE-78 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-tn" title="CWE-78 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-78 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-78 good: True Negative"></span>
+<span class="matrix-cell m-tp" title="CWE-134 bad: True Positive"></span>
+<span class="matrix-cell m-fn" title="CWE-134 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-134 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-tn" title="CWE-134 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-134 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-134 good: True Negative"></span>
+<span class="matrix-cell m-fn" title="CWE-190 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-190 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-190 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-190 good: True Negative"></span>
+<span class="matrix-cell m-fn" title="CWE-369 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-369 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-369 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-tn" title="CWE-369 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-369 good: True Negative"></span>
+<span class="matrix-cell m-tn" title="CWE-369 good: True Negative"></span>
+<span class="matrix-cell m-fn" title="CWE-457 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-457 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-fn" title="CWE-457 bad: False Negative (missed)"></span>
+<span class="matrix-cell m-tn" title="CWE-457 good: True Negative"></span>
+<span class="matrix-cell m-unk" title="CWE-457 good: UNKNOWN"></span>
+<span class="matrix-cell m-tn" title="CWE-457 good: True Negative"></span>
+</div>
+<div class="legend">
+<div class="legend-item"><span class="matrix-cell m-tp"></span>TP</div>
+<div class="legend-item"><span class="matrix-cell m-tn"></span>TN</div>
+<div class="legend-item"><span class="matrix-cell m-fp"></span>FP</div>
+<div class="legend-item"><span class="matrix-cell m-fn"></span>FN</div>
+<div class="legend-item"><span class="matrix-cell m-unk"></span>UNK</div>
+<div class="legend-item"><span class="matrix-cell m-blank"></span>BLANK</div>
+</div>
+</div>
+<h4>Per-CWE Breakdown</h4>
+<div class="tbl-wrapper"><table>
+<thead><tr><th>CWE</th><th class="center">TP</th><th class="center">TN</th><th class="center">FP</th><th class="center">FN</th><th class="center">UNK</th><th class="center">BLANK</th><th class="center">Correct / Total</th></tr></thead><tbody>
+<tr><td><strong>CWE-134</strong></td>
+<td class="center good">1</td>
+<td class="center good">3</td>
+<td class="center warn">0</td>
+<td class="center bad">2</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>4/6</strong></td></tr>
+<tr><td><strong>CWE-190</strong></td>
+<td class="center good">0</td>
+<td class="center good">3</td>
+<td class="center warn">0</td>
+<td class="center bad">3</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>3/6</strong></td></tr>
+<tr><td><strong>CWE-369</strong></td>
+<td class="center good">0</td>
+<td class="center good">3</td>
+<td class="center warn">0</td>
+<td class="center bad">3</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>3/6</strong></td></tr>
+<tr><td><strong>CWE-457</strong></td>
+<td class="center good">0</td>
+<td class="center good">2</td>
+<td class="center warn">0</td>
+<td class="center bad">3</td>
+<td class="center mute">1</td>
+<td class="center mute">0</td>
+<td class="center"><strong>2/6</strong></td></tr>
+<tr><td><strong>CWE-78</strong></td>
+<td class="center good">1</td>
+<td class="center good">3</td>
+<td class="center warn">0</td>
+<td class="center bad">2</td>
+<td class="center mute">0</td>
+<td class="center mute">0</td>
+<td class="center"><strong>4/6</strong></td></tr>
+</tbody></table></div>
+</div>
+</section>
+<section>
+<h2 id="sec5"><span class="section-num">4.</span>Model Compatibility Notes</h2>
+<p>Quirks, gotchas, and integration hurdles encountered while getting each provider to drive the Agent-G runtime. Short version: Anthropic and local Ollama are painless; every cloud model has at least one edge case that Agent-G now handles automatically in code. These notes are the primary reference for anyone adding a new provider.</p>
+<h3 id="sec5-anthropic">4.1 Anthropic (Claude)</h3>
+<p><strong>Works out of the box</strong> once the API key is correct. The one issue we hit was a typo in the key itself &mdash; Anthropic returned <code>401 invalid x-api-key</code> without pointing at the specific character that was wrong. Lesson: when in doubt, copy-paste straight from the Anthropic console; a single missing dash breaks the whole key.</p><p>Native <code>v1/messages</code> API plus the <code>x-api-key</code> header, so it sidesteps the <code>Authorization: Bearer</code> schemes that other providers use. No thinking-token handling needed for the standard Claude models; they just return text.</p>
+<h3 id="sec5-google">4.2 Google (Gemini + Gemma)</h3>
+<p>Four things bit us in sequence and each one has a dedicated code fix:</p>
+<ol>
+<li><strong>Gemini 3.x is a thinking model that can exhaust its visible-token budget.</strong> The response comes back with <code>candidatesTokenCount: 0</code> even on a successful <code>STOP</code> completion because all the budget went to hidden reasoning tokens. <em>Fix:</em> the <code>thinking_models</code> registry auto-bumps <code>maxOutputTokens</code> to 32k and retries with 2&times; budget on empty visible output, up to a 131k ceiling (<code>src/runtime/thinking_models.py</code>, <code>src/external_client.py</code>).</li>
+<li><strong>Gemini 3.x emits <code>MALFORMED_FUNCTION_CALL</code></strong> when the built-in function-calling mode is active and the model hasn't finished emitting the call. <em>Fix:</em> Agent-G sets <code>toolConfig.functionCallingConfig.mode&nbsp;=&nbsp;NONE</code> for mandatory-thinking Gemini variants, forcing plain-text tool-call syntax instead.</li>
+<li><strong>Gemma 4 31B returns a multi-part response</strong> with a <code>{"thought":&nbsp;true}</code> part first and the visible answer as a second part. The original parser grabbed <code>parts[0]</code> (the thought!) and returned an empty visible string. <em>Fix:</em> the parser now concatenates all non-thought text parts from the <code>candidates[0].content.parts</code> array.</li>
+<li><strong>Preview endpoints get shed aggressively under load.</strong> During development we hit a 59/60 HTTP 503 storm on <code>gemini-3.1-flash-lite-preview</code> that lasted ~20 minutes. The error body admitted it plainly: <em>"This model is currently experiencing high demand"</em>. <em>Fix:</em> the per-provider circuit breaker (<code>src/runtime/circuit_breaker.py</code>) trips after 3 consecutive 5xx errors and stops hammering the endpoint until a cooldown expires.</li>
+</ol>
+<h3 id="sec5-openai">4.3 OpenAI (GPT-5 family via API key)</h3>
+<p><strong>Worked once we knew the exact model name.</strong> <code>gpt-5</code>, <code>gpt-5.4</code>, and <code>gpt-5.4-mini</code> are all valid; <code>gpt5.4</code>, <code>gpt-5-4</code>, and <code>gpt-5.4-turbo</code> get rejected with 400 by OpenAI's router. Use <code>EXTERNAL_MODEL=gpt-5.4</code> verbatim.</p><p>The real gotcha: <strong>GPT-5 writes <code>**INVESTIGATION COMPLETE**</code> as a transitional phrase BEFORE producing the final verdict block.</strong> The original ReAct loop saw the marker, exited, and the harness classified the response as UNKNOWN. <em>Fix:</em> the loop now requires <em>both</em> a completion marker <em>and</em> a parseable verdict pattern in the same response before exiting. If the marker appears alone, the loop keeps going. Covered by a regression test in <code>tests/test_conversation_replay.py</code>.</p>
+<h3 id="sec5-codex-oauth">4.4 Codex Desktop OAuth (ChatGPT Team/Pro, no API key)</h3>
+<p>This was the most surprising path. The token in <code>~/.codex/auth.json</code> <strong>is a real OpenAI OAuth token</strong> but it has the wrong scopes for the public OpenAI API:</p>
+<div class="tbl-wrapper"><table>
+<thead><tr><th>Endpoint</th><th>Response</th><th>Reason</th></tr></thead><tbody>
+<tr><td><code>api.openai.com/v1/chat/completions</code></td><td>500 <em>"Internal server error"</em></td><td>Masked &mdash; means "wrong auth for this endpoint"</td></tr>
+<tr><td><code>api.openai.com/v1/responses</code></td><td>401 <em>"Missing scopes: api.responses.write"</em></td><td>Explicit scope rejection</td></tr>
+<tr><td><code>chatgpt.com/backend-api/codex/responses</code></td><td><strong>200 OK</strong></td><td>This is the endpoint Codex desktop actually uses</td></tr>
+</tbody></table></div>
+<p>The token has <code>api.connectors.read</code> + <code>api.connectors.invoke</code> scopes, which work only against the ChatGPT-internal backend. Agent-G detects this case from the URL (<code>chatgpt.com/backend-api/codex</code> in <code>CUSTOM_API_URL</code>) and switches to the Responses-API payload shape (<code>instructions</code> + <code>input</code> list, <code>stream=true</code> mandatory, <code>store=false</code>, <code>chatgpt-account-id</code> header). See <code>src/custom_api_client.py:_generate_chatgpt_backend</code>.</p><p>Rate limiting on this endpoint is also stricter than on <code>api.openai.com</code> &mdash; about 6&ndash;10 requests per minute before it 429s. Set <code>CUSTOM_API_REQUEST_DELAY=10</code> to stay under the cap.</p>
+<h3 id="sec5-ollama">4.5 Local Ollama</h3>
+<p>Small models (<code>gemma4:e4b</code> and friends) have a capacity issue that looks like a thinking-model failure: they truncate to an empty completion on long agentic prompts. Agent-G added them to the <code>thinking_models</code> registry not because they're reasoning models, but because that registry is the central place where <code>num_predict</code> gets auto-bumped. The fix in <code>src/ollama_client.py</code> also drops temperature from 0.7 &rarr; 0.1 for registered small-model entries, because they "sample themselves into" blank responses when temperature is high.</p><p><strong>Cloud Ollama</strong> (models with <code>-cloud</code> suffix like <code>gemma4:31b-cloud</code>, <code>qwen3.5:397b-cloud</code>) reliably rate-limits after ~6 binaries per minute. The circuit breaker catches it after 3 consecutive 429s and tells Agent-G to fall back or give up cleanly.</p>
+<h3 id="sec5-summary">4.6 Summary</h3>
+<div class="tbl-wrapper"><table>
+<thead><tr><th>Provider</th><th class="center">Works out of box?</th><th>Code changes needed</th></tr></thead><tbody>
+<tr><td>Anthropic (Claude)</td><td class="center"><span class="pill pill-good">YES</span></td><td>None (key typo was user error)</td></tr>
+<tr><td>Google Gemini 3.x</td><td class="center"><span class="pill pill-warn">PARTIAL</span></td><td>thinking_models registry, multi-part parser, circuit breaker, thinkingConfig</td></tr>
+<tr><td>Google Gemma 4</td><td class="center"><span class="pill pill-warn">PARTIAL</span></td><td>multi-part response parser</td></tr>
+<tr><td>OpenAI (API key)</td><td class="center"><span class="pill pill-warn">PARTIAL</span></td><td><code>INVESTIGATION COMPLETE</code> marker + verdict co-requirement</td></tr>
+<tr><td>Codex OAuth (ChatGPT)</td><td class="center"><span class="pill pill-warn">PARTIAL</span></td><td>ChatGPT backend endpoint + Responses API payload + account header</td></tr>
+<tr><td>Ollama local (small)</td><td class="center"><span class="pill pill-warn">PARTIAL</span></td><td><code>num_predict</code> bump + temperature floor</td></tr>
+<tr><td>Ollama cloud</td><td class="center"><span class="pill pill-bad">NO</span></td><td>Rate limits unusable for batch runs; circuit breaker absorbs the 429s</td></tr>
+</tbody></table></div>
+<p>All of these fixes are <strong>already in the Agent-G codebase</strong> &mdash; nothing extra is needed to use any of the providers above. These notes exist so that anyone adding a new provider can recognize the failure modes and apply the same patterns.</p>
+</section>
+
+<div class="footer">
+  <strong>Agent-G Juliet Benchmark Report</strong> &middot;
+  Generated automatically by <code>scripts/build_html_report.py</code><br>
+  Source data: <code>logs/juliet_test_*.json</code> &middot;
+  Anonymization pipeline: <code>JulietAnonymizer.java</code> + <code>LeakFilter</code> + binary-name hashing
+</div>
+</div>
+</body>
+</html>

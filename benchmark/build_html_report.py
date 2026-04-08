@@ -1138,6 +1138,7 @@ def build_html(runs):
     h.append('<li><a href="#sec2">Results</a></li>')
     h.append('<li><a href="#sec3">Per-CWE breakdown</a></li>')
     h.append('<li><a href="#sec4">Per-model detail</a></li>')
+    h.append('<li><a href="#sec5">Model compatibility notes</a></li>')
     h.append('</ol>')
     h.append('</nav>')
 
@@ -1460,6 +1461,169 @@ def build_html(runs):
             h.append(f'<td class="center"><strong>{correct}/{total}</strong></td></tr>')
         h.append('</tbody></table></div>')
         h.append('</div>')  # end model-detail
+
+    h.append('</section>')
+
+    # ─────────────────────────────────────────────────────────────
+    # Section 4: Model compatibility notes
+    # ─────────────────────────────────────────────────────────────
+    h.append('<section>')
+    h.append('<h2 id="sec5"><span class="section-num">4.</span>Model Compatibility Notes</h2>')
+    h.append(
+        '<p>Quirks, gotchas, and integration hurdles encountered while getting each provider '
+        'to drive the Agent-G runtime. Short version: Anthropic and local Ollama are painless; '
+        'every cloud model has at least one edge case that Agent-G now handles automatically in '
+        'code. These notes are the primary reference for anyone adding a new provider.</p>'
+    )
+
+    # Anthropic
+    h.append('<h3 id="sec5-anthropic">4.1 Anthropic (Claude)</h3>')
+    h.append(
+        '<p><strong>Works out of the box</strong> once the API key is correct. The one issue '
+        'we hit was a typo in the key itself &mdash; Anthropic returned '
+        '<code>401 invalid x-api-key</code> without pointing at the specific character that '
+        'was wrong. Lesson: when in doubt, copy-paste straight from the Anthropic console; a '
+        'single missing dash breaks the whole key.</p>'
+        '<p>Native <code>v1/messages</code> API plus the <code>x-api-key</code> header, so it '
+        'sidesteps the <code>Authorization: Bearer</code> schemes that other providers use. No '
+        'thinking-token handling needed for the standard Claude models; they just return text.</p>'
+    )
+
+    # Google
+    h.append('<h3 id="sec5-google">4.2 Google (Gemini + Gemma)</h3>')
+    h.append(
+        '<p>Four things bit us in sequence and each one has a dedicated code fix:</p>'
+    )
+    h.append('<ol>')
+    h.append(
+        '<li><strong>Gemini 3.x is a thinking model that can exhaust its visible-token '
+        'budget.</strong> The response comes back with '
+        '<code>candidatesTokenCount: 0</code> even on a successful <code>STOP</code> '
+        'completion because all the budget went to hidden reasoning tokens. '
+        '<em>Fix:</em> the <code>thinking_models</code> registry auto-bumps '
+        '<code>maxOutputTokens</code> to 32k and retries with 2&times; budget on empty '
+        'visible output, up to a 131k ceiling '
+        '(<code>src/runtime/thinking_models.py</code>, <code>src/external_client.py</code>).</li>'
+    )
+    h.append(
+        '<li><strong>Gemini 3.x emits <code>MALFORMED_FUNCTION_CALL</code></strong> when the '
+        'built-in function-calling mode is active and the model hasn\'t finished emitting the '
+        'call. <em>Fix:</em> Agent-G sets '
+        '<code>toolConfig.functionCallingConfig.mode&nbsp;=&nbsp;NONE</code> for '
+        'mandatory-thinking Gemini variants, forcing plain-text tool-call syntax instead.</li>'
+    )
+    h.append(
+        '<li><strong>Gemma 4 31B returns a multi-part response</strong> with a '
+        '<code>{"thought":&nbsp;true}</code> part first and the visible answer as a second '
+        'part. The original parser grabbed <code>parts[0]</code> (the thought!) and returned '
+        'an empty visible string. <em>Fix:</em> the parser now concatenates all non-thought '
+        'text parts from the <code>candidates[0].content.parts</code> array.</li>'
+    )
+    h.append(
+        '<li><strong>Preview endpoints get shed aggressively under load.</strong> During '
+        'development we hit a 59/60 HTTP 503 storm on '
+        '<code>gemini-3.1-flash-lite-preview</code> that lasted ~20 minutes. The error body '
+        'admitted it plainly: <em>"This model is currently experiencing high demand"</em>. '
+        '<em>Fix:</em> the per-provider circuit breaker '
+        '(<code>src/runtime/circuit_breaker.py</code>) trips after 3 consecutive 5xx errors '
+        'and stops hammering the endpoint until a cooldown expires.</li>'
+    )
+    h.append('</ol>')
+
+    # OpenAI
+    h.append('<h3 id="sec5-openai">4.3 OpenAI (GPT-5 family via API key)</h3>')
+    h.append(
+        '<p><strong>Worked once we knew the exact model name.</strong> <code>gpt-5</code>, '
+        '<code>gpt-5.4</code>, and <code>gpt-5.4-mini</code> are all valid; '
+        '<code>gpt5.4</code>, <code>gpt-5-4</code>, and <code>gpt-5.4-turbo</code> get '
+        'rejected with 400 by OpenAI\'s router. Use <code>EXTERNAL_MODEL=gpt-5.4</code> '
+        'verbatim.</p>'
+        '<p>The real gotcha: <strong>GPT-5 writes '
+        '<code>**INVESTIGATION COMPLETE**</code> as a transitional phrase BEFORE producing '
+        'the final verdict block.</strong> The original ReAct loop saw the marker, exited, '
+        'and the harness classified the response as UNKNOWN. '
+        '<em>Fix:</em> the loop now requires <em>both</em> a completion marker <em>and</em> '
+        'a parseable verdict pattern in the same response before exiting. If the marker '
+        'appears alone, the loop keeps going. Covered by a regression test in '
+        '<code>tests/test_conversation_replay.py</code>.</p>'
+    )
+
+    # Codex OAuth
+    h.append('<h3 id="sec5-codex-oauth">4.4 Codex Desktop OAuth (ChatGPT Team/Pro, no API key)</h3>')
+    h.append(
+        '<p>This was the most surprising path. The token in <code>~/.codex/auth.json</code> '
+        '<strong>is a real OpenAI OAuth token</strong> but it has the wrong scopes for the '
+        'public OpenAI API:</p>'
+    )
+    h.append('<div class="tbl-wrapper"><table>')
+    h.append('<thead><tr><th>Endpoint</th><th>Response</th><th>Reason</th></tr></thead><tbody>')
+    h.append('<tr><td><code>api.openai.com/v1/chat/completions</code></td>'
+             '<td>500 <em>"Internal server error"</em></td>'
+             '<td>Masked &mdash; means "wrong auth for this endpoint"</td></tr>')
+    h.append('<tr><td><code>api.openai.com/v1/responses</code></td>'
+             '<td>401 <em>"Missing scopes: api.responses.write"</em></td>'
+             '<td>Explicit scope rejection</td></tr>')
+    h.append('<tr><td><code>chatgpt.com/backend-api/codex/responses</code></td>'
+             '<td><strong>200 OK</strong></td>'
+             '<td>This is the endpoint Codex desktop actually uses</td></tr>')
+    h.append('</tbody></table></div>')
+    h.append(
+        '<p>The token has <code>api.connectors.read</code> + <code>api.connectors.invoke</code> '
+        'scopes, which work only against the ChatGPT-internal backend. Agent-G detects this '
+        'case from the URL (<code>chatgpt.com/backend-api/codex</code> in '
+        '<code>CUSTOM_API_URL</code>) and switches to the Responses-API payload shape '
+        '(<code>instructions</code> + <code>input</code> list, <code>stream=true</code> '
+        'mandatory, <code>store=false</code>, <code>chatgpt-account-id</code> header). See '
+        '<code>src/custom_api_client.py:_generate_chatgpt_backend</code>.</p>'
+        '<p>Rate limiting on this endpoint is also stricter than on <code>api.openai.com</code> '
+        '&mdash; about 6&ndash;10 requests per minute before it 429s. Set '
+        '<code>CUSTOM_API_REQUEST_DELAY=10</code> to stay under the cap.</p>'
+    )
+
+    # Ollama
+    h.append('<h3 id="sec5-ollama">4.5 Local Ollama</h3>')
+    h.append(
+        '<p>Small models (<code>gemma4:e4b</code> and friends) have a capacity issue that '
+        'looks like a thinking-model failure: they truncate to an empty completion on long '
+        'agentic prompts. Agent-G added them to the <code>thinking_models</code> registry not '
+        'because they\'re reasoning models, but because that registry is the central place '
+        'where <code>num_predict</code> gets auto-bumped. The fix in '
+        '<code>src/ollama_client.py</code> also drops temperature from 0.7 &rarr; 0.1 for '
+        'registered small-model entries, because they "sample themselves into" blank '
+        'responses when temperature is high.</p>'
+        '<p><strong>Cloud Ollama</strong> (models with <code>-cloud</code> suffix like '
+        '<code>gemma4:31b-cloud</code>, <code>qwen3.5:397b-cloud</code>) reliably rate-limits '
+        'after ~6 binaries per minute. The circuit breaker catches it after 3 consecutive '
+        '429s and tells Agent-G to fall back or give up cleanly.</p>'
+    )
+
+    # Summary table
+    h.append('<h3 id="sec5-summary">4.6 Summary</h3>')
+    h.append('<div class="tbl-wrapper"><table>')
+    h.append('<thead><tr><th>Provider</th><th class="center">Works out of box?</th>'
+             '<th>Code changes needed</th></tr></thead><tbody>')
+    compat = [
+        ("Anthropic (Claude)",         "✓", "None (key typo was user error)"),
+        ("Google Gemini 3.x",          "partial", "thinking_models registry, multi-part parser, circuit breaker, thinkingConfig"),
+        ("Google Gemma 4",             "partial", "multi-part response parser"),
+        ("OpenAI (API key)",           "partial", "<code>INVESTIGATION COMPLETE</code> marker + verdict co-requirement"),
+        ("Codex OAuth (ChatGPT)",      "partial", "ChatGPT backend endpoint + Responses API payload + account header"),
+        ("Ollama local (small)",       "partial", "<code>num_predict</code> bump + temperature floor"),
+        ("Ollama cloud",               "no",      "Rate limits unusable for batch runs; circuit breaker absorbs the 429s"),
+    ]
+    for name, status, notes in compat:
+        cls = {"✓": "good", "partial": "warn", "no": "bad"}.get(status, "mute")
+        label = {"✓": "YES", "partial": "PARTIAL", "no": "NO"}.get(status, status)
+        h.append(f'<tr><td>{name}</td>'
+                 f'<td class="center"><span class="pill pill-{cls}">{label}</span></td>'
+                 f'<td>{notes}</td></tr>')
+    h.append('</tbody></table></div>')
+    h.append(
+        '<p>All of these fixes are <strong>already in the Agent-G codebase</strong> &mdash; '
+        'nothing extra is needed to use any of the providers above. These notes exist so '
+        'that anyone adding a new provider can recognize the failure modes and apply '
+        'the same patterns.</p>'
+    )
 
     h.append('</section>')
 
