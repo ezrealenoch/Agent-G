@@ -1,0 +1,58 @@
+# Agent-G binary-analysis sandbox
+#
+# Run a single binary through the Ghidra HTTP server inside a network-isolated
+# container. The host bind-mounts the binary read-only and consumes the HTTP
+# server on the published port. No persistent state in the container.
+#
+# Usage:
+#   AGENT_G_BINARY=/abs/path/to/sample.bin \
+#   AGENT_G_GHIDRA_AUTH_TOKEN=$(openssl rand -base64 32) \
+#   docker compose -f sandbox/docker-compose.yml up
+#
+# Then connect from the host as usual:
+#   curl -H "Authorization: Bearer $AGENT_G_GHIDRA_AUTH_TOKEN" \
+#        http://localhost:18080/health
+
+version: "3.8"
+
+services:
+  ghidra-sandbox:
+    build:
+      context: ..
+      dockerfile: sandbox/Dockerfile
+    image: agent-g/ghidra-sandbox:latest
+    container_name: agent-g-sandbox
+    # Network isolation: deny outbound, allow only the published port inbound
+    # via the published 8080 → host 18080 mapping below.
+    network_mode: bridge
+    # Drop all kernel capabilities — Ghidra is pure Java, doesn't need any
+    cap_drop:
+      - ALL
+    # Read-only root filesystem; only /sandbox/work is RW for Ghidra's
+    # project workspace and Java's tmp dir
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 4g
+    cpus: 2.0
+    environment:
+      AGENT_G_GHIDRA_AUTH_TOKEN: "${AGENT_G_GHIDRA_AUTH_TOKEN:?must set AGENT_G_GHIDRA_AUTH_TOKEN}"
+      PORT: "8080"
+    volumes:
+      # Host binary, mounted read-only
+      - "${AGENT_G_BINARY:?must set AGENT_G_BINARY=/abs/path/to/file}:/sandbox/in/binary:ro"
+      # Ephemeral Ghidra workspace; never written to host
+      - type: tmpfs
+        target: /sandbox/work
+        tmpfs:
+          size: 1g
+    ports:
+      - "18080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12

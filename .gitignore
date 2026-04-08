@@ -1,0 +1,82 @@
+# ── Secrets + local config ─────────────────────────
+.env
+.env.*
+!.env.example
+.secrets.json
+*.key
+*.pem
+.credentials/
+auth.json
+
+# ── Python ────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+build/
+dist/
+wheels/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ── Agent-G runtime artifacts ─────────────────────
+# Per-investigation run outputs (trace, checkpoint, events, provenance)
+runs/
+!runs/.gitkeep
+# Top-level logs (benchmark runs + server logs)
+logs/
+!logs/.gitkeep
+# SQLite result store + journals
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
+# ── Benchmark outputs ─────────────────────────────
+benchmark/logs/
+benchmark/runs/
+*.html.bak
+
+# ── Ghidra temp + install ─────────────────────────
+# Anyone's local Ghidra install is theirs, not ours
+ghidra_*/
+*.rep
+*.gpr
+*.lock
+# Ghidra tmp project dirs spawned by the pool + oneshot helper
+juliet_test_*/
+oneshot_*/
+ghidra_pool_*/
+leakchk_*/
+
+# ── IDEs + editors ────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Docker / sandbox ──────────────────────────────
+# Never commit built images or tarballs
+*.tar
+*.tar.gz
+sandbox/build/
+
+# ── Temp files ────────────────────────────────────
+*.tmp
+*.bak
+.cache/
+tmp/

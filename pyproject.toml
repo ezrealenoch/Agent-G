@@ -1,0 +1,91 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-g"
+version = "0.1.0"
+description = "Standalone headless binary-analysis agent powered by Ghidra and LLMs."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Agent-G contributors" },
+]
+keywords = [
+    "binary-analysis", "ghidra", "reverse-engineering", "llm",
+    "vulnerability-research", "static-analysis", "security",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Disassemblers",
+]
+
+# ── Core runtime dependencies ────────────────────────────────────
+# Minimal set required for: loading config, talking to Ghidra over HTTP,
+# calling any of the built-in LLM clients (Ollama/Google/Anthropic/OpenAI
+# via the external_client), and the full runtime stack (circuit breaker,
+# budget, checkpoint, trace, observability, secrets, result store).
+dependencies = [
+    "httpx>=0.24.0",
+    "requests>=2.26.0",
+    "pydantic>=2.7.1",
+    "pydantic-settings>=2.2.1",
+    "tenacity>=9.0.0",
+    "rich>=13.7.1",
+    "ijson>=3.2.0",
+]
+
+[project.optional-dependencies]
+# Secrets backends are optional because most users will only ever need one.
+# Install the one that matches your deployment's secrets manager.
+winvault = ["keyring>=24.0"]
+vault    = ["hvac>=2.0"]
+awssm    = ["boto3>=1.28"]
+
+# Everything for local dev / CI
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "mypy>=1.7",
+    "ruff>=0.1.0",
+]
+
+# "Batteries included" — all optional deps at once
+all = [
+    "keyring>=24.0",
+    "hvac>=2.0",
+    "boto3>=1.28",
+    "numpy>=1.24.0",
+]
+
+[project.scripts]
+# Primary CLI entry point. `agent-g --help` after `pip install -e .`.
+agent-g = "src.cli:main"
+
+[project.urls]
+# Fill these in when the repo goes public.
+# Homepage = "https://github.com/your-org/agent-g"
+# Documentation = "https://github.com/your-org/agent-g/blob/main/README.md"
+# Issues = "https://github.com/your-org/agent-g/issues"
+
+[tool.setuptools]
+packages = ["src", "src.runtime", "benchmark", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
