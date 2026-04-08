@@ -193,7 +193,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
             bridge = BridgeLite(config=cfg, binary_name=binary_path.name)
 
-            # Attach production writers to the underlying runtime
+            # start_task() constructs the ConversationRuntime — must be
+            # called before we can attach writers to it.
+            bridge.start_task(args.task)
             runtime = bridge.runtime
             runtime.budget_tracker = budget.new_tracker(
                 model_name=args.model or getattr(runtime.api, "model_name", "") or ""
@@ -205,7 +207,6 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             event_sink = EventJsonlSink(runs_dir / "events.jsonl")
             runtime.on_event = event_sink.emit
 
-            bridge.start_task(args.task)
             summary = runtime.run_turn(prompt_text)
     finally:
         pool.close()
@@ -273,6 +274,152 @@ def _parse_verdict(text: str) -> str:
         if any(k in v for k in ("VULNERABLE", "EXPLOIT", "MALICIOUS")):
             return "VULNERABLE"
     return "UNKNOWN"
+
+
+# ── chat ────────────────────────────────────────────────────────
+
+def cmd_chat(args: argparse.Namespace) -> int:
+    """Interactive REPL for long-form investigations.
+
+    Spins up a Ghidra sandbox on the given binary, loads the vuln_hunt
+    system prompt, then drops the user into a multi-turn loop where each
+    line is fed to ``ConversationRuntime.run_turn`` and the model's
+    reply is streamed back. Session history is preserved across turns,
+    so the model remembers prior tool results.
+
+    Commands inside the REPL:
+      /help          — list commands
+      /reset         — clear conversation history (keep system prompt)
+      /save <path>   — dump trace so far to JSONL
+      /budget        — show current spend
+      /exit, /quit   — leave the session
+    """
+    from src import __version__
+    from src.runtime.observability import (
+        configure_structured_logging, new_trace_id, set_trace_id, EventJsonlSink,
+    )
+    from src.runtime.budget import Budget
+    from src.runtime.checkpoint import CheckpointWriter
+    from src.runtime.trace import TraceWriter
+    from src.runtime.ghidra_pool import GhidraPool
+    from src.runtime.prompt_library import render_prompt
+
+    binary_path = Path(args.binary).expanduser().resolve()
+    if not binary_path.exists():
+        print(f"error: binary not found: {binary_path}", file=sys.stderr)
+        return 1
+
+    configure_structured_logging(level=args.log_level, json_output=False)
+    trace_id = new_trace_id()
+    set_trace_id(trace_id)
+    runs_dir = Path(args.runs_dir).expanduser() / trace_id
+    runs_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        prompt_text, prompt_ver, _ = render_prompt(
+            args.prompt_name, version=args.prompt_version,
+            binary_name=binary_path.name, task_kind=args.task,
+        )
+    except KeyError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+    # Chat uses a wider budget by default — long sessions need headroom.
+    budget = Budget(
+        wall_time_s=args.max_wall_time_s,
+        max_total_tokens=args.max_tokens,
+        max_tool_calls=args.max_tool_calls,
+        max_iterations=args.max_iterations,
+        max_cost_usd=args.max_cost_usd,
+    )
+
+    try:
+        from src.config import get_config
+        from src.bridge_lite import BridgeLite
+    except Exception as e:
+        print(f"error: BridgeLite not importable ({e}). "
+              f"Run 'agent-g doctor' to diagnose.", file=sys.stderr)
+        return 1
+
+    print(f"[agent-g v{__version__}] chat session trace_id={trace_id}")
+    print(f"  binary: {binary_path}")
+    print(f"  prompt: {args.prompt_name} {prompt_ver}")
+    print(f"  runs  : {runs_dir}")
+    print("  type /help for commands, /exit to quit")
+    print()
+
+    cfg = get_config()
+    pool = GhidraPool()
+    try:
+        with pool.session(str(binary_path)) as handle:
+            cfg.ghidra.base_url = handle.base_url
+            os.environ["AGENT_G_GHIDRA_AUTH_TOKEN"] = handle.auth_token
+
+            bridge = BridgeLite(config=cfg, binary_name=binary_path.name)
+            bridge.start_task(args.task)
+            runtime = bridge.runtime
+            runtime.budget_tracker = budget.new_tracker(
+                model_name=args.model or getattr(runtime.api, "model_name", "") or ""
+            )
+            runtime.checkpoint_writer = CheckpointWriter(runs_dir / "checkpoint.json")
+            runtime.trace_writer = TraceWriter(runs_dir / "trace.jsonl")
+            runtime.trace_id = trace_id
+            runtime.binary_name = binary_path.name
+            event_sink = EventJsonlSink(runs_dir / "events.jsonl")
+            runtime.on_event = event_sink.emit
+
+            # Seed the session with the system prompt but do NOT run it
+            # as a turn — let the user ask the first question.
+            runtime.update_system_prompt(prompt_text)
+
+            turn_no = 0
+            while True:
+                try:
+                    line = input("you> ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    print()
+                    break
+                if not line:
+                    continue
+
+                if line in ("/exit", "/quit"):
+                    break
+                if line == "/help":
+                    print("  /help     show this help")
+                    print("  /reset    clear history, keep system prompt")
+                    print("  /budget   show current spend")
+                    print("  /exit     leave the session")
+                    continue
+                if line == "/reset":
+                    runtime.reset_session()
+                    print("[history cleared]")
+                    continue
+                if line == "/budget":
+                    t = runtime.budget_tracker
+                    print(f"  iterations : {t.iterations}")
+                    print(f"  tool_calls : {t.tool_calls}")
+                    print(f"  tokens_in  : {t.input_tokens}")
+                    print(f"  tokens_out : {t.output_tokens}")
+                    print(f"  cost_usd   : {t.cost_usd:.4f}")
+                    continue
+
+                turn_no += 1
+                try:
+                    summary = runtime.run_turn(line)
+                except Exception as e:
+                    print(f"[error during turn: {e}]", file=sys.stderr)
+                    continue
+
+                print()
+                print("agent>", summary.final_text or "(no reply)")
+                print(f"[turn {turn_no} — {summary.iterations} iters, "
+                      f"{summary.tool_calls} tools, exit={summary.exit_reason}]")
+                print()
+    finally:
+        pool.close()
+
+    print(f"session saved to {runs_dir}")
+    return 0
 
 
 # ── replay ──────────────────────────────────────────────────────
@@ -412,6 +559,21 @@ def _build_parser() -> argparse.ArgumentParser:
     ana.add_argument("--max-iterations", type=int, default=30)
     ana.add_argument("--max-cost-usd", type=float, default=1.00)
 
+    # chat
+    chat = sub.add_parser("chat", help="interactive multi-turn session on a binary")
+    chat.add_argument("binary", help="path to the binary to investigate")
+    chat.add_argument("--task", default="vuln")
+    chat.add_argument("--model", default=None)
+    chat.add_argument("--prompt-name", default="vuln_hunt")
+    chat.add_argument("--prompt-version", default="latest")
+    chat.add_argument("--runs-dir", default="runs")
+    chat.add_argument("--log-level", default="INFO")
+    chat.add_argument("--max-wall-time-s", type=float, default=3600.0)
+    chat.add_argument("--max-tokens", type=int, default=1_000_000)
+    chat.add_argument("--max-tool-calls", type=int, default=500)
+    chat.add_argument("--max-iterations", type=int, default=200)
+    chat.add_argument("--max-cost-usd", type=float, default=5.00)
+
     # replay
     rep = sub.add_parser("replay", help="inspect / replay a captured trace")
     rep.add_argument("trace", help="path to trace.jsonl")
@@ -446,6 +608,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return cmd_doctor(args)
     if args.command == "analyze":
         return cmd_analyze(args)
+    if args.command == "chat":
+        return cmd_chat(args)
     if args.command == "replay":
         return cmd_replay(args)
     if args.command == "pool":
