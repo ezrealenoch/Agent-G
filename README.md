@@ -112,21 +112,11 @@ Run `agent-g <command> --help` for all flags.
 
 ## Configuration
 
-All configuration lives in `.env`. Copy [`.env.example`](.env.example) and
-edit — the file is self-documenting with labelled sections and inline
-comments for every provider and knob.
+All configuration lives in `.env`. Copy [`.env.example`](.env.example),
+uncomment one LLM provider section, and paste your API key. That's it.
 
-At minimum you need:
-
-1. **One LLM provider block** — Anthropic / Google / OpenAI / Codex OAuth / Ollama (all documented inline)
-2. **Ghidra location** — `GHIDRA_INSTALL_DIR` (bare-metal) or `AGENT_G_MODE=docker` + `GHIDRA_BASE_URL` (Docker)
-
-For production, prefer a real secrets backend over plain `.env`:
-
-```bash
-pip install -e '.[winvault]'   # or .[vault] or .[awssm]
-export AGENT_G_SECRETS_BACKEND=winvault
-```
+If you're on Docker, also uncomment the two Docker lines (`AGENT_G_MODE` + `GHIDRA_BASE_URL`).
+If you're on bare-metal, uncomment and set `GHIDRA_INSTALL_DIR`.
 
 ---
 
