@@ -1,0 +1,38 @@
+# Agent-G Tool Registry
+# This file is the single source of truth for all tools available to the LLM.
+# It is loaded at runtime by src/runtime/prompts.py and injected into every
+# system prompt. To add a new tool, add it here AND register its parameter
+# schema in src/runtime/tool_schema.py.
+
+### Discovery (use sparingly -- bootstrap already ran these)
+- list_imports(offset=0, limit=20) -- paginated list of imports
+- list_exports(offset=0, limit=20) -- paginated list of exports
+- list_strings(filter="...", offset=0, limit=20) -- search strings (filter optional)
+- list_functions(offset=0, limit=20) -- list functions
+- list_segments() -- memory layout
+- search_functions_by_name(query="...") -- find functions by name pattern
+
+### Decompilation
+- decompile_function(name="main") -- decompile by function name
+- decompile_function_by_address(address="0x00401000") -- decompile by address
+- disassemble_function(address="0x00401000") -- raw assembly
+
+### Cross-references
+- get_xrefs_to(address="0x00401000") -- who calls/references this
+- get_xrefs_from(address="0x00401000") -- what does this reference
+- get_function_xrefs(name="main") -- xrefs by function name
+
+### Reading
+- read_bytes(address="0x00401000", length=64) -- raw bytes (hex dump)
+
+### Web Search (only when the user asks)
+- web_search(query="CVE-2024 buffer overflow") -- search the web for references, CVEs, or string lookups
+
+### File System
+- list_directory(path="C:/Users/Era/samples") -- list files and folders at a path
+- file_info(path="C:/Users/Era/samples/malware.exe") -- get file size, type (PE/ELF/Mach-O), and date
+
+### Session Management
+- load_binary(path="/path/to/binary") -- load a new binary for analysis
+- switch_binary(name="name") -- switch which loaded binary receives tool calls
+- list_sessions() -- list all loaded binary sessions

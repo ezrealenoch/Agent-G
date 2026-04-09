@@ -207,6 +207,14 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             event_sink = EventJsonlSink(runs_dir / "events.jsonl")
             runtime.on_event = event_sink.emit
 
+            # Wrap tool runner with logging
+            from src.runtime.tool_logger import ToolCallLogger, LoggingToolRunner
+            tool_log = ToolCallLogger(Path("logs/tool_calls.jsonl"), trace_id=trace_id)
+            runtime.tools = LoggingToolRunner(
+                runtime.tools, tool_log,
+                binary_name_fn=lambda: binary_path.name,
+            )
+
             summary = runtime.run_turn(prompt_text)
     finally:
         pool.close()
@@ -279,20 +287,25 @@ def _parse_verdict(text: str) -> str:
 # ── chat ────────────────────────────────────────────────────────
 
 def cmd_chat(args: argparse.Namespace) -> int:
-    """Interactive REPL for long-form investigations.
+    """Interactive multi-session REPL for long-form investigations.
 
-    Spins up a Ghidra sandbox on the given binary, loads the vuln_hunt
-    system prompt, then drops the user into a multi-turn loop where each
-    line is fed to ``ConversationRuntime.run_turn`` and the model's
-    reply is streamed back. Session history is preserved across turns,
-    so the model remembers prior tool results.
+    Optionally takes a binary path as argument (auto-loads it). If no
+    binary is given, drops into the REPL immediately — the user can
+    load binaries via ``/load <path>`` or the LLM can call
+    ``EXECUTE: load_binary(path="...")``.
+
+    Multiple binaries can be loaded simultaneously. Each gets its own
+    Ghidra instance from the pool. Switch with ``/switch <name>``.
 
     Commands inside the REPL:
-      /help          — list commands
-      /reset         — clear conversation history (keep system prompt)
-      /save <path>   — dump trace so far to JSONL
-      /budget        — show current spend
-      /exit, /quit   — leave the session
+      /help              — list commands
+      /load <path> [name] — load a binary
+      /switch <name>     — switch active binary
+      /sessions          — list loaded binaries
+      /close <name>      — close a binary session
+      /reset             — clear conversation history (keep system prompt)
+      /budget            — show current spend
+      /exit, /quit       — leave the session
     """
     from src import __version__
     from src.runtime.observability import (
@@ -302,11 +315,11 @@ def cmd_chat(args: argparse.Namespace) -> int:
     from src.runtime.checkpoint import CheckpointWriter
     from src.runtime.trace import TraceWriter
     from src.runtime.ghidra_pool import GhidraPool
-
-    binary_path = Path(args.binary).expanduser().resolve()
-    if not binary_path.exists():
-        print(f"error: binary not found: {binary_path}", file=sys.stderr)
-        return 1
+    from src.runtime.prompts import build_freeform_prompt
+    from src.runtime.conversation import ConversationRuntime
+    from src.command_parser import CommandParser
+    from src.session_manager import SessionManager
+    from src.meta_tools import build_composite_runner
 
     configure_structured_logging(level=args.log_level, json_output=False)
     trace_id = new_trace_id()
@@ -314,14 +327,6 @@ def cmd_chat(args: argparse.Namespace) -> int:
     runs_dir = Path(args.runs_dir).expanduser() / trace_id
     runs_dir.mkdir(parents=True, exist_ok=True)
 
-    # Chat mode uses BridgeLite's "freeform" task, which sets a system
-    # prompt containing the tool reference + EXECUTE: tool_name(args)
-    # syntax that Agent-G's text-based parser expects. Overriding the
-    # system prompt at the runtime level strips that tool teaching and
-    # the model produces pure-text replies with zero tool calls.
-    bridge_task = "freeform"
-
-    # Chat uses a wider budget by default — long sessions need headroom.
     budget = Budget(
         wall_time_s=args.max_wall_time_s,
         max_total_tokens=args.max_tokens,
@@ -332,90 +337,214 @@ def cmd_chat(args: argparse.Namespace) -> int:
 
     try:
         from src.config import get_config
-        from src.bridge_lite import BridgeLite
+        from src.runtime.api_client import ApiClient
     except Exception as e:
-        print(f"error: BridgeLite not importable ({e}). "
+        print(f"error: imports failed ({e}). "
               f"Run 'agent-g doctor' to diagnose.", file=sys.stderr)
         return 1
 
-    print(f"[agent-g v{__version__}] chat session trace_id={trace_id}")
-    print(f"  binary: {binary_path}")
-    print(f"  task  : {bridge_task} (freeform REPL)")
-    print(f"  runs  : {runs_dir}")
-    print("  type /help for commands, /exit to quit")
-    print()
-
     cfg = get_config()
     pool = GhidraPool()
+    parser = CommandParser()
+
+    # SessionManager tracks loaded binaries; CompositeToolRunner
+    # dispatches meta-tools locally, delegates Ghidra tools to active binary.
+    session_mgr = SessionManager(pool, cfg.ghidra, parser)
+    composite = build_composite_runner(session_mgr)
+
+    # Build the LLM client directly — do NOT use BridgeLite here because
+    # BridgeLite.start_task() runs a bootstrap that connects to Ghidra,
+    # which doesn't exist yet when no binary is loaded.
+    provider = getattr(cfg, "llm_provider", "ollama")
+    if provider in ("google", "external"):
+        from src.external_client import ExternalClient
+        llm_client = ExternalClient(config=cfg.external)
+    elif provider == "custom_api":
+        from src.custom_api_client import CustomAPIClient
+        llm_client = CustomAPIClient(config=cfg.custom_api)
+    else:
+        from src.ollama_client import OllamaClient
+        llm_client = OllamaClient(config=cfg.ollama)
+    api_client = ApiClient(llm_client, phase="investigation")
+
+    # Wrap the composite tool runner with logging.
+    from src.runtime.tool_logger import ToolCallLogger, LoggingToolRunner
+    tool_log = ToolCallLogger(Path("logs/tool_calls.jsonl"), trace_id=trace_id)
+    logged_runner = LoggingToolRunner(
+        composite, tool_log,
+        binary_name_fn=lambda: session_mgr.active_name or "(none)",
+    )
+
+    # Create the single shared ConversationRuntime.
+    system_prompt = build_freeform_prompt()
+    runtime = ConversationRuntime(
+        api_client=api_client,
+        tool_runner=logged_runner,
+        command_parser=parser,
+        system_prompt=system_prompt,
+    )
+    runtime.budget_tracker = budget.new_tracker(
+        model_name=args.model or getattr(api_client, "model_name", "") or ""
+    )
+    runtime.checkpoint_writer = CheckpointWriter(runs_dir / "checkpoint.json")
+    runtime.trace_writer = TraceWriter(runs_dir / "trace.jsonl")
+    runtime.trace_id = trace_id
+    runtime.binary_name = "(chat)"
+    event_sink = EventJsonlSink(runs_dir / "events.jsonl")
+    runtime.on_event = event_sink.emit
+
+    print(f"Agent-G v{__version__} | Interactive Binary Analysis")
+    print(f"trace: {trace_id}")
+    print("Type /help for commands, /exit to quit.")
+    print("Load a binary with /load <path> or just tell me what to analyze.")
+
+    # If binary was passed on the command line, auto-load it.
+    if args.binary:
+        binary_path = Path(args.binary).expanduser().resolve()
+        if not binary_path.exists():
+            print(f"error: binary not found: {binary_path}", file=sys.stderr)
+            session_mgr.close_all()
+            pool.close()
+            return 1
+        try:
+            bs = session_mgr.load_binary(str(binary_path))
+            composite.delegate = bs.tool_runner
+            runtime.binary_name = bs.name
+            # Inject bootstrap as a user message so the LLM sees it
+            from src.runtime.session import Message
+            runtime.session.append(Message.user(
+                f"[Binary loaded: {bs.name}]\n{bs.bootstrap_text}"
+            ))
+            print(f"  binary: {bs.name} ({binary_path})")
+        except Exception as e:
+            print(f"error loading binary: {e}", file=sys.stderr)
+            session_mgr.close_all()
+            pool.close()
+            return 1
+    else:
+        print("  no binary loaded — use /load <path> or ask the agent to load one")
+
+    print()
+
     try:
-        with pool.session(str(binary_path)) as handle:
-            cfg.ghidra.base_url = handle.base_url
-            os.environ["AGENT_G_GHIDRA_AUTH_TOKEN"] = handle.auth_token
+        turn_no = 0
+        while True:
+            try:
+                line = input(">>> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\n[session ended]")
+                break
+            if not line:
+                continue
 
-            bridge = BridgeLite(config=cfg, binary_name=binary_path.name)
-            bridge.start_task(bridge_task)
-            runtime = bridge.runtime
-            runtime.budget_tracker = budget.new_tracker(
-                model_name=args.model or getattr(runtime.api, "model_name", "") or ""
-            )
-            runtime.checkpoint_writer = CheckpointWriter(runs_dir / "checkpoint.json")
-            runtime.trace_writer = TraceWriter(runs_dir / "trace.jsonl")
-            runtime.trace_id = trace_id
-            runtime.binary_name = binary_path.name
-            event_sink = EventJsonlSink(runs_dir / "events.jsonl")
-            runtime.on_event = event_sink.emit
+            # ── Exit ──
+            if line.lower() in ("/exit", "/quit", "exit", "quit"):
+                break
 
-            # Do NOT override runtime.system_prompt here — BridgeLite's
-            # freeform builder already includes the tool reference and
-            # EXECUTE: syntax that the parser needs.
+            if line == "/help":
+                print("  /help              show this help")
+                print("  /load <path> [name] load a binary for analysis")
+                print("  /switch <name>     switch active binary")
+                print("  /sessions          list loaded binaries")
+                print("  /close <name>      close a binary session")
+                print("  /reset             clear history, keep system prompt")
+                print("  /budget            show current spend")
+                print("  /exit              leave the session")
+                continue
 
-            turn_no = 0
-            while True:
+            if line.startswith("/load "):
+                parts = line[6:].strip().split(None, 1)
+                load_path = parts[0] if parts else ""
+                load_name = parts[1] if len(parts) > 1 else None
+                if not load_path:
+                    print("usage: /load <path> [name]")
+                    continue
                 try:
-                    line = input("you> ").strip()
-                except (EOFError, KeyboardInterrupt):
-                    print()
-                    break
-                if not line:
-                    continue
-
-                if line in ("/exit", "/quit"):
-                    break
-                if line == "/help":
-                    print("  /help     show this help")
-                    print("  /reset    clear history, keep system prompt")
-                    print("  /budget   show current spend")
-                    print("  /exit     leave the session")
-                    continue
-                if line == "/reset":
-                    runtime.reset_session()
-                    print("[history cleared]")
-                    continue
-                if line == "/budget":
-                    t = runtime.budget_tracker
-                    print(f"  iterations : {t.iterations}")
-                    print(f"  tool_calls : {t.tool_calls}")
-                    print(f"  tokens_in  : {t.input_tokens}")
-                    print(f"  tokens_out : {t.output_tokens}")
-                    print(f"  cost_usd   : {t.cost_usd:.4f}")
-                    continue
-
-                turn_no += 1
-                try:
-                    summary = runtime.run_turn(line)
+                    bs = session_mgr.load_binary(load_path, name=load_name)
+                    composite.delegate = bs.tool_runner
+                    runtime.binary_name = bs.name
+                    from src.runtime.session import Message
+                    runtime.session.append(Message.user(
+                        f"[Binary loaded: {bs.name}]\n{bs.bootstrap_text}"
+                    ))
+                    print(f"[loaded '{bs.name}' from {bs.binary_path}]")
                 except Exception as e:
-                    print(f"[error during turn: {e}]", file=sys.stderr)
-                    continue
+                    print(f"[error: {e}]")
+                continue
 
-                print()
-                print("agent>", summary.final_text or "(no reply)")
-                print(f"[turn {turn_no} — {summary.iterations} iters, "
-                      f"{summary.tool_calls} tools, exit={summary.exit_reason}]")
-                print()
+            if line.startswith("/switch "):
+                name = line[8:].strip()
+                try:
+                    bs = session_mgr.switch(name)
+                    composite.delegate = bs.tool_runner
+                    runtime.binary_name = bs.name
+                    from src.runtime.session import Message
+                    runtime.session.append(Message.user(
+                        f"[Switched active binary to '{name}']"
+                    ))
+                    print(f"[switched to '{name}']")
+                except KeyError as e:
+                    print(f"[error: {e}]")
+                continue
+
+            if line == "/sessions":
+                sessions = session_mgr.list_sessions()
+                if not sessions:
+                    print("  no binaries loaded")
+                else:
+                    for name, path, is_active in sessions:
+                        marker = " << active" if is_active else ""
+                        print(f"  {name}: {path}{marker}")
+                continue
+
+            if line.startswith("/close "):
+                name = line[7:].strip()
+                session_mgr.close_session(name)
+                active = session_mgr.active
+                if active:
+                    composite.delegate = active.tool_runner
+                    runtime.binary_name = active.name
+                else:
+                    composite.delegate = None
+                    runtime.binary_name = "(chat)"
+                print(f"[closed '{name}']")
+                continue
+
+            if line == "/reset":
+                runtime.reset_session()
+                print("[history cleared]")
+                continue
+
+            if line == "/budget":
+                t = runtime.budget_tracker
+                print(f"  iterations : {t.iterations}")
+                print(f"  tool_calls : {t.tool_calls}")
+                print(f"  tokens_in  : {t.input_tokens}")
+                print(f"  tokens_out : {t.output_tokens}")
+                print(f"  cost_usd   : {t.cost_usd:.4f}")
+                continue
+
+            # ── Normal turn ──
+            turn_no += 1
+            try:
+                summary = runtime.run_turn(line)
+            except Exception as e:
+                print(f"[error during turn: {e}]", file=sys.stderr)
+                continue
+
+            print()
+            print("Agent-G:", summary.final_text or "(no reply)")
+            print(f"  [{summary.iterations} iters, "
+                  f"{summary.tool_calls} tools]")
+            print()
     finally:
+        session_mgr.close_all()
         pool.close()
 
-    print(f"session saved to {runs_dir}")
+    t = runtime.budget_tracker
+    print(f"Session ended. {t.tool_calls} tool calls, "
+          f"{t.input_tokens + t.output_tokens} tokens.")
+    print(f"Trace: {runs_dir}")
     return 0
 
 
@@ -557,8 +686,9 @@ def _build_parser() -> argparse.ArgumentParser:
     ana.add_argument("--max-cost-usd", type=float, default=1.00)
 
     # chat
-    chat = sub.add_parser("chat", help="interactive multi-turn session on a binary")
-    chat.add_argument("binary", help="path to the binary to investigate")
+    chat = sub.add_parser("chat", help="interactive multi-turn session (binary optional)")
+    chat.add_argument("binary", nargs="?", default=None,
+                     help="path to a binary (optional; can load later with /load)")
     chat.add_argument("--model", default=None)
     chat.add_argument("--runs-dir", default="runs")
     chat.add_argument("--log-level", default="INFO")

@@ -49,6 +49,7 @@ dependencies = [
 [project.optional-dependencies]
 # Secrets backends are optional because most users will only ever need one.
 # Install the one that matches your deployment's secrets manager.
+search   = ["ddgs>=9.0"]
 winvault = ["keyring>=24.0"]
 vault    = ["hvac>=2.0"]
 awssm    = ["boto3>=1.28"]

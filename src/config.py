@@ -1536,7 +1536,7 @@ class BridgeConfig(BaseSettings):
     google: GoogleConfig = Field(default_factory=GoogleConfig) # Deprecated, keep for compat
     external: ExternalConfig = Field(default_factory=ExternalConfig)
     custom_api: CustomAPIConfig = Field(default_factory=CustomAPIConfig)
-    llm_provider: str = Field(default="ollama", description="LLM provider: 'ollama', 'google' (legacy), 'external', or 'custom_api'", env="LLM_PROVIDER")
+    llm_provider: str = Field(default="ollama", description="LLM provider: 'ollama', 'external', or 'custom_api'", env="LLM_PROVIDER")
     ghidra: GhidraMCPConfig = Field(default_factory=GhidraMCPConfig)
     session_history: SessionHistoryConfig = Field(default_factory=SessionHistoryConfig)
     

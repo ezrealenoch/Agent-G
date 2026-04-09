@@ -325,6 +325,57 @@ register_tool(ToolSpec(
 ))
 
 
+# ── Session management meta-tools (chat mode) ────────────────────
+
+register_tool(ToolSpec(
+    name="list_directory",
+    description="List files and subdirectories at a path. Helps find binaries to analyze.",
+    params=[
+        Param("path", "str", required=False),
+    ],
+))
+
+register_tool(ToolSpec(
+    name="file_info",
+    description="Get file size, type (PE/ELF/Mach-O), and modification date.",
+    params=[
+        Param("path", "str", required=True),
+    ],
+))
+
+register_tool(ToolSpec(
+    name="web_search",
+    description="Search the web for security references, CVEs, or string analysis. Only use when the user asks.",
+    params=[
+        Param("query", "str", required=True),
+        Param("max_results", "int", default=5, min=1, max=10),
+    ],
+))
+
+register_tool(ToolSpec(
+    name="load_binary",
+    description="Load a new binary for analysis. Spins up a Ghidra instance and runs discovery.",
+    params=[
+        Param("path", "str", required=True),
+        Param("name", "str", required=False),
+    ],
+))
+
+register_tool(ToolSpec(
+    name="switch_binary",
+    description="Switch the active binary. All subsequent tool calls target this binary.",
+    params=[
+        Param("name", "str", required=True),
+    ],
+))
+
+register_tool(ToolSpec(
+    name="list_sessions",
+    description="List all loaded binary sessions and which one is active.",
+    params=[],
+))
+
+
 def tool_schema_document() -> Dict[str, Any]:
     """Produce a JSON-serializable schema document for meta-agent consumption.
 
