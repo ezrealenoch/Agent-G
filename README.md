@@ -1,207 +1,196 @@
 # Agent-G
 
-**Headless binary-analysis agent** that drives Ghidra with an LLM.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
+[![Tests: 20/20](https://img.shields.io/badge/tests-20%2F20%20passing-brightgreen.svg)](#testing)
 
-Give Agent-G a binary and it will:
+**Headless binary-analysis agent** — point it at a binary, pick an LLM, get a vulnerability verdict with full audit trail. No GUI, no manual reversing.
 
-1. Spin up a sandboxed Ghidra instance
-2. Let an LLM investigate the binary through a ReAct tool-calling loop
-3. Produce a verdict + structured report + signed audit trail
-
-Works with Claude, Gemini, GPT-5, local Ollama models, or anything OpenAI-compatible.
+Works with **Claude, Gemini, GPT-5, local Ollama models**, or anything OpenAI-compatible.
 
 ---
 
-## Install
+## Quick start (bare-metal, 4 commands)
 
-Agent-G has two parts that run in different places:
-
-| Component | Where it runs | Why |
-|---|---|---|
-| **Ghidra HTTP server** | Inside a Docker container (recommended) or bare-metal on your host | Analyzes the untrusted binary; isolated from your host via Docker |
-| **Agent-G CLI** | Always on your host | Talks to your LLM provider; you need the API keys here |
-
-Pick one of the two install paths below. Both end with the same `agent-g analyze` command.
-
-### Path A — Docker (recommended)
-
-**Docker side** (runs the Ghidra sandbox):
-- Docker 24+ with `compose v2` — **no Java, no Ghidra install**, everything is baked into the image
-
-**Host side** (runs the Agent-G CLI):
-- Python 3.10+
-- `pip install -e .`
+Prerequisites: **Python 3.10+**, **Java JDK 17+**, **Ghidra 12.0.2** ([download](https://github.com/NationalSecurityAgency/ghidra/releases)).
 
 ```bash
-# 1. Clone + install the host CLI
-git clone https://github.com/ezrealenoch/Agent-G.git
-cd Agent-G
+git clone https://github.com/ezrealenoch/Agent-G.git && cd Agent-G
 pip install -e .
-
-# 2. Copy the env template and fill in ONE provider's credentials
-cp .env.example .env
-$EDITOR .env   # see .env.example for inline provider docs
-
-# 3. Spin up the Docker Ghidra sandbox
-export AGENT_G_GHIDRA_AUTH_TOKEN=$(openssl rand -base64 32)
-export AGENT_G_BINARY=/abs/path/to/your/binary
-docker compose -f sandbox/docker-compose.yml up --build -d
-
-# 4. Point the CLI at the sandbox and verify
-export AGENT_G_MODE=docker
-export GHIDRA_BASE_URL=http://localhost:18080
-agent-g doctor      # should print PASS
-
-# 5. Analyze
-agent-g analyze "$AGENT_G_BINARY"
+cp .env.example .env          # edit: set GHIDRA_INSTALL_DIR + one LLM provider
+agent-g doctor                # verify everything works
 ```
 
-### Path B — Bare-metal (no Docker)
-
-**Host side** (runs everything):
-- Python 3.10+
-- **Java JDK 17+** ([Eclipse Temurin](https://adoptium.net) recommended)
-- **Ghidra 12.0.2** ([download](https://github.com/NationalSecurityAgency/ghidra/releases))
-- `pip install -e .`
+Then scan a binary:
 
 ```bash
-# 1. Install Java + Ghidra on your host
-#    Ubuntu/Debian:
-sudo apt install -y openjdk-17-jdk unzip wget
-wget https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.0.2_build/ghidra_12.0.2_PUBLIC_20240314.zip
-unzip ghidra_12.0.2_PUBLIC_20240314.zip -d /opt/
-export GHIDRA_INSTALL_DIR=/opt/ghidra_12.0.2_PUBLIC
-
-# 2. Clone + install the Agent-G CLI
-git clone https://github.com/ezrealenoch/Agent-G.git
-cd Agent-G
-pip install -e .
-
-# 3. Configure credentials
-cp .env.example .env
-$EDITOR .env   # set GHIDRA_INSTALL_DIR and ONE provider block
-
-# 4. Verify
-agent-g doctor      # should print PASS
-
-# 5. Analyze
 agent-g analyze /path/to/binary
 ```
 
-`agent-g doctor` tells you exactly what's missing if anything is wrong.
-
----
-
-## Configuration
-
-All configuration lives in `.env`. Copy [`.env.example`](.env.example) and
-edit — the file is the single source of truth for every knob Agent-G reads,
-grouped into labelled sections with inline comments for each provider.
-
-At minimum you need to set:
-
-1. **One LLM provider block** (Anthropic / Google / OpenAI / Codex OAuth / Ollama — all documented inline in `.env.example`)
-2. **`GHIDRA_INSTALL_DIR`** (bare-metal only) or **`AGENT_G_MODE=docker` + `GHIDRA_BASE_URL`** (Docker only)
-
-For production, prefer a real secrets backend over `.env`:
+Or start an interactive investigation:
 
 ```bash
-pip install -e '.[winvault]'   # or .[vault] or .[awssm]
-export AGENT_G_SECRETS_BACKEND=winvault
-python -c "from src.runtime.secrets import set_secret; \
-           set_secret('ANTHROPIC_API_KEY', 'sk-ant-...')"
+agent-g chat /path/to/binary
 ```
+
+That's it. `agent-g doctor` tells you exactly what's missing if anything is wrong.
 
 ---
 
-## Benchmark results
+## Quick start (Docker, 5 commands)
 
-We evaluated Agent-G on a **leak-free Juliet benchmark** — a 30-binary
-stratified corpus covering 10 CWE categories (OS command injection,
-format string, integer overflow, divide by zero, uninitialized
-variable, stack/heap overflow, double free, use-after-free, NULL
-deref).
+Prerequisites: **Python 3.10+**, **Docker 24+** with `compose v2`. No Java or Ghidra install needed.
 
-Before every run the harness anonymizes symbol names, strips DWARF
-parameter names, masks Juliet scaffolding strings inside decompile
-output, redacts the `/health` endpoint, and hashes the binary filename
-to `sample_NNNNN.bin`. Nothing in the anonymized corpus tells the
-model whether a binary is the `_bad` or `_good` variant — every
-verdict has to come from actual data-flow analysis.
+```bash
+git clone https://github.com/ezrealenoch/Agent-G.git && cd Agent-G
+pip install -e .
+cp .env.example .env          # edit: set one LLM provider
 
-![Effective F1 by model](docs/images/benchmark_f1.svg)
+# Start the Ghidra sandbox
+docker compose -f sandbox/docker-compose.yml up --build -d
 
-| # | Model | Provider | Eff F1 | Coverage | TP/TN/FP/FN | UNK / BLANK |
-|---|---|---|---|---|---|---|
-| 🥇 1 | **Claude Opus 4.6** (blind) | Anthropic | **1.000** | 30/30 | 15 / 15 / 0 / 0 | 0 / 0 |
-| 🥈 2 | Claude Sonnet 4.5 | Anthropic | 0.629 | 29/30 | 11 / 6 / 8 / 4 | 1 / 0 |
-| 🥉 3 | Gemini 3.1 Flash Lite | Google | 0.611 | 26/30 | 11 / 5 / 8 / 2 | 2 / 2 |
-| 4 | GPT-5.4 (Codex OAuth) | OpenAI | 0.583 | 27/30 | 7 / 13 / 1 / 6 | 3 / 0 |
-| 5 | gemma4:e4b (local) | Ollama | 0.276 | 12/30 | 4 / 5 / 0 / 3 | 0 / 18 |
-| 6 | GPT-5.4 Mini | OpenAI | 0.222 | 29/30 | 2 / 14 / 0 / 13 | 1 / 0 |
+# Point CLI at the sandbox
+echo -e "AGENT_G_MODE=docker\nGHIDRA_BASE_URL=http://localhost:18080" >> .env
+agent-g doctor                # verify everything works
+```
 
-**"Effective F1"** counts any `UNKNOWN` or `BLANK` response as a wrong
-answer (missed bug on a vulnerable binary, false alarm on a safe one).
+Then `agent-g analyze /path/to/binary` or `agent-g chat /path/to/binary` as above.
 
-### What we learned
+---
 
-- **Only Claude Opus 4.6 actually solves this corpus** (30/30 clean).
-  Every other model faces the standard precision/recall trade-off.
-- **Gemini Flash Lite and Claude Sonnet 4.5 are "aggressive"** — high
-  recall on real bugs, high false-positive rate on safe variants
-  ("shout wolf" bias).
-- **GPT-5.4 and GPT-5.4 Mini are "conservative"** — near-perfect
-  precision but they miss most real vulnerabilities, especially Mini
-  which committed to `NOT_VULNERABLE` on 13 of 15 bad binaries.
-- **gemma4:e4b struggles with commitment, not reasoning.** When it
-  commits to a verdict (12/30 cases) its raw F1 is 0.727 — better than
-  Flash Lite's. The problem is the other 18 binaries where the small
-  model goes blank before producing a verdict block.
-- **GPT-5.4 Mini is pathologically cautious on security tasks.**
-  Precision 1.000 but recall 0.133. On a vulnerability audit you want
-  the opposite trade-off.
+## How it works
 
-The full HTML report — including per-CWE heatmap, per-model verdict
-matrix, and a **Model Compatibility Notes** section documenting every
-quirk we hit per provider and the code fix that handles it — lives at
-[`logs/juliet_comparison_report.html`](logs/juliet_comparison_report.html).
+```
+You                    Agent-G CLI              Ghidra sandbox
+ |                         |                         |
+ |  agent-g analyze foo    |                         |
+ |------------------------>|  spin up Ghidra pool     |
+ |                         |------------------------>|
+ |                         |  send prompt to LLM      |
+ |                         |---> Claude / GPT / ...   |
+ |                         |                          |
+ |                         |  LLM calls tools:        |
+ |                         |  decompile, xrefs, ...   |
+ |                         |<------------------------>|
+ |                         |  ... (ReAct loop) ...    |
+ |                         |                          |
+ |  verdict: VULNERABLE    |                          |
+ |<------------------------|  write trace + provenance|
+```
+
+1. **Spin up** a sandboxed Ghidra instance (Docker or bare-metal pool)
+2. **LLM investigates** the binary through a ReAct tool-calling loop — decompiling functions, tracing xrefs, reading strings, chasing data flow
+3. **Produce** a verdict (`VULNERABLE` / `NOT_VULNERABLE` / `UNKNOWN`) + structured report + signed provenance bundle
 
 ---
 
 ## Commands
 
 ```
-agent-g version              Show the installed version
-agent-g doctor               Self-check JDK, Ghidra, deps, and config
-agent-g analyze <binary>     Analyze one binary
+agent-g version              Print the installed version
+agent-g doctor               Self-check: JDK, Ghidra, deps, LLM config
+agent-g analyze <binary>     One-shot vulnerability scan (batch mode)
+agent-g chat <binary>        Interactive multi-turn investigation (REPL)
 agent-g replay <trace>       Inspect a captured trace
 agent-g pool status          Show the Ghidra instance pool
-agent-g store recent         Show recent investigations
+agent-g store recent         List recent investigations
 ```
 
-Run `agent-g <command> --help` for flags.
+Run `agent-g <command> --help` for all flags.
+
+### `analyze` vs `chat`
+
+| | `analyze` | `chat` |
+|---|---|---|
+| **Mode** | Batch — run once, get a verdict | Interactive — multi-turn REPL |
+| **Use case** | CI pipelines, bulk scanning, benchmarks | Deep dives, follow-up questions, exploratory RE |
+| **Budget defaults** | 10 min / 200K tokens / 80 tools / $1 | 1 hr / 1M tokens / 500 tools / $5 |
+| **Output** | Verdict + provenance bundle | Conversation + trace |
+| **REPL commands** | n/a | `/help` `/reset` `/budget` `/exit` |
+
+---
+
+## Configuration
+
+All configuration lives in `.env`. Copy [`.env.example`](.env.example) and
+edit — the file is self-documenting with labelled sections and inline
+comments for every provider and knob.
+
+At minimum you need:
+
+1. **One LLM provider block** — Anthropic / Google / OpenAI / Codex OAuth / Ollama (all documented inline)
+2. **Ghidra location** — `GHIDRA_INSTALL_DIR` (bare-metal) or `AGENT_G_MODE=docker` + `GHIDRA_BASE_URL` (Docker)
+
+For production, prefer a real secrets backend over plain `.env`:
+
+```bash
+pip install -e '.[winvault]'   # or .[vault] or .[awssm]
+export AGENT_G_SECRETS_BACKEND=winvault
+```
 
 ---
 
 ## What you get back
 
-Every `analyze` run writes a full audit trail to `runs/<trace_id>/`:
+Every run writes a full audit trail to `runs/<trace_id>/`:
 
 ```
 runs/abc123def456/
-├── trace.jsonl       # Every LLM call + tool call (replayable)
-├── checkpoint.json   # Crash-resume snapshot
-├── events.jsonl      # Runtime event stream
-├── provenance.json   # Binary hash + model + prompt + verdict (signable)
-└── alerts.jsonl      # Anything that fired during the run
+  trace.jsonl       Every LLM call + tool call (replayable)
+  checkpoint.json   Crash-resume snapshot
+  events.jsonl      Runtime event stream
+  provenance.json   Binary hash, model, prompt, verdict (signable)
 ```
 
-Runs are also indexed in `runs/results.sqlite` so you can query prior investigations:
+Query prior investigations:
 
 ```bash
 agent-g store recent --limit 10
 agent-g store get --trace-id abc123def456
 ```
+
+---
+
+## Benchmark results
+
+We evaluated Agent-G on a **leak-free Juliet benchmark** — 30 binaries
+across 10 CWE categories with fully anonymized symbols, redacted
+scaffolding, and hashed filenames. Every verdict comes from actual
+data-flow analysis, not pattern-matching on symbol names.
+
+![Effective F1 by model](docs/images/benchmark_f1.svg)
+
+| # | Model | Provider | Eff F1 | Coverage | TP/TN/FP/FN | UNK / BLANK |
+|---|---|---|---|---|---|---|
+| 1 | **Claude Opus 4.6** (blind) | Anthropic | **1.000** | 30/30 | 15 / 15 / 0 / 0 | 0 / 0 |
+| 2 | Claude Sonnet 4.5 | Anthropic | 0.629 | 29/30 | 11 / 6 / 8 / 4 | 1 / 0 |
+| 3 | Gemini 3.1 Flash Lite | Google | 0.611 | 26/30 | 11 / 5 / 8 / 2 | 2 / 2 |
+| 4 | GPT-5.4 (Codex OAuth) | OpenAI | 0.583 | 27/30 | 7 / 13 / 1 / 6 | 3 / 0 |
+| 5 | gemma4:e4b (local) | Ollama | 0.276 | 12/30 | 4 / 5 / 0 / 3 | 0 / 18 |
+| 6 | GPT-5.4 Mini | OpenAI | 0.222 | 29/30 | 2 / 14 / 0 / 13 | 1 / 0 |
+
+**"Effective F1"** counts any `UNKNOWN` or `BLANK` response as a wrong
+answer — no free passes for indecision.
+
+### What we learned
+
+- **Only Claude Opus 4.6 actually solves this corpus** (30/30 clean).
+  Every other model faces the standard precision/recall trade-off.
+- **Gemini Flash Lite and Claude Sonnet 4.5 are "aggressive"** — high
+  recall on real bugs, high false-positive rate on safe variants.
+- **GPT-5.4 and GPT-5.4 Mini are "conservative"** — near-perfect
+  precision but they miss most real vulnerabilities, especially Mini
+  which committed to `NOT_VULNERABLE` on 13 of 15 bad binaries.
+- **gemma4:e4b struggles with commitment, not reasoning.** When it
+  commits to a verdict (12/30 cases) its raw F1 is 0.727. The problem
+  is the other 18 binaries where the small model goes blank.
+- **GPT-5.4 Mini is pathologically cautious on security tasks.**
+  Precision 1.000 but recall 0.133 — the wrong trade-off for a
+  vulnerability audit.
+
+Full report with per-CWE heatmap, verdict matrix, and model
+compatibility notes:
+[`logs/juliet_comparison_report.html`](logs/juliet_comparison_report.html).
 
 ---
 
@@ -219,19 +208,21 @@ trace replay, tool schema validation, and prompt library.
 
 ## Architecture
 
-`src/runtime/` is where the production-grade pieces live:
+`src/runtime/` is where the production pieces live:
 
-- **`conversation.py`** — ReAct loop, budget + checkpoint + trace wiring
-- **`circuit_breaker.py`** — per-provider circuit with backoff and HALF_OPEN probe
-- **`budget.py`** — hard caps on wall-time, tokens, tool calls, cost (with pricing table)
-- **`checkpoint.py`** — atomic JSON checkpoints for crash-resume
-- **`trace.py`** — append-only JSONL trace + replay + provenance bundle
-- **`ghidra_pool.py`** — stateless pool manager (concurrent investigations)
-- **`result_store.py`** — SQLite store for querying prior runs
-- **`prompt_library.py`** — versioned prompts with content hashes
-- **`tool_schema.py`** — strict validation of LLM tool calls
-- **`observability.py`** — JSON logs + trace-id contextvar + alert sinks
-- **`secrets.py`** — pluggable secrets chain (env / winvault / vault / awssm)
+| Module | Purpose |
+|---|---|
+| `conversation.py` | ReAct loop with budget + checkpoint + trace wiring |
+| `circuit_breaker.py` | Per-provider circuit breaker with backoff and HALF_OPEN probe |
+| `budget.py` | Hard caps on wall-time, tokens, tool calls, cost |
+| `checkpoint.py` | Atomic JSON checkpoints for crash-resume |
+| `trace.py` | Append-only JSONL trace + replay + provenance bundle |
+| `ghidra_pool.py` | Stateless pool manager for concurrent investigations |
+| `result_store.py` | SQLite store for querying prior runs |
+| `prompt_library.py` | Versioned prompts with content hashes |
+| `tool_schema.py` | Strict validation of LLM tool calls |
+| `observability.py` | Structured JSON logs + trace-id propagation |
+| `secrets.py` | Pluggable secrets chain (env / winvault / vault / awssm) |
 
 `sandbox/` holds the Docker image. `tests/` holds the regression suite.
 
