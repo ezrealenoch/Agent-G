@@ -28,6 +28,11 @@
 ### Web Search (only when the user asks)
 - web_search(query="CVE-2024 buffer overflow") -- search the web for references, CVEs, or string lookups
 
+### Investigation Notes (markdown files on disk, survive compaction)
+- write_note(content="## FUN_0066b470\nHTTP update checker...", filename="functions.md") -- append to a note file (default: findings.md)
+- read_note(filename="functions.md") -- read a note file, or list all files if no name given
+- search_notes(query="http") -- keyword search across all note files
+
 ### File System
 - list_directory(path="C:/Users/Era/samples") -- list files and folders at a path
 - file_info(path="C:/Users/Era/samples/malware.exe") -- get file size, type (PE/ELF/Mach-O), and date

@@ -328,6 +328,31 @@ register_tool(ToolSpec(
 # ── Session management meta-tools (chat mode) ────────────────────
 
 register_tool(ToolSpec(
+    name="write_note",
+    description="Append text to a markdown note file. Use to persist findings, function summaries, and leads that survive context compaction.",
+    params=[
+        Param("content", "str", required=True),
+        Param("filename", "str", required=False),
+    ],
+))
+
+register_tool(ToolSpec(
+    name="read_note",
+    description="Read a note file, or list all note files if no filename given.",
+    params=[
+        Param("filename", "str", required=False),
+    ],
+))
+
+register_tool(ToolSpec(
+    name="search_notes",
+    description="Keyword search across all note files for the active binary.",
+    params=[
+        Param("query", "str", required=True),
+    ],
+))
+
+register_tool(ToolSpec(
     name="list_directory",
     description="List files and subdirectories at a path. Helps find binaries to analyze.",
     params=[

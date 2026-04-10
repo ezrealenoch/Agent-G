@@ -111,6 +111,126 @@ def make_list_sessions_handler(
     return handler
 
 
+def make_write_note_handler(session_mgr: SessionManager) -> Callable:
+    """Handler for EXECUTE: write_note(filename="...", content="...")
+
+    OpenClaw pattern: notes are markdown files on disk. The agent writes
+    to ``runs/<trace_id>/notes/<binary>/filename.md``. Append-only by
+    default — if the file exists, content is appended.
+    """
+
+    def handler(params: dict) -> Tuple[str, bool]:
+        content = params.get("content", "").strip()
+        if not content:
+            return "[ERROR] content is required.", True
+        active = session_mgr.active
+        if active is None:
+            return "[ERROR] No binary loaded — notes are per-binary.", True
+
+        filename = params.get("filename", "").strip()
+        if not filename:
+            filename = "findings.md"
+        if not filename.endswith(".md"):
+            filename += ".md"
+
+        # Sanitize filename
+        safe = "".join(c for c in filename if c.isalnum() or c in "-_.")
+        if not safe:
+            safe = "notes.md"
+
+        notes_dir = active.ensure_notes_dir()
+        path = notes_dir / safe
+
+        # Append-only (OpenClaw pattern)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(content + "\n\n")
+
+        return f"Appended to {safe} ({len(content)} chars). Path: {path}", False
+
+    return handler
+
+
+def make_read_note_handler(session_mgr: SessionManager) -> Callable:
+    """Handler for EXECUTE: read_note(filename="...")"""
+
+    def handler(params: dict) -> Tuple[str, bool]:
+        active = session_mgr.active
+        if active is None:
+            return "No binary loaded.", False
+
+        filename = params.get("filename", "").strip()
+        if not filename:
+            # List available note files
+            notes_dir = active.notes_dir
+            if notes_dir is None or not notes_dir.exists():
+                return f"No notes directory for {active.name}.", False
+            files = sorted(notes_dir.glob("*.md"))
+            if not files:
+                return f"No note files for {active.name} yet.", False
+            lines = [f"Note files for {active.name}:"]
+            for f in files:
+                size = f.stat().st_size
+                lines.append(f"  {f.name} ({size:,} bytes)")
+            return "\n".join(lines), False
+
+        if not filename.endswith(".md"):
+            filename += ".md"
+        safe = "".join(c for c in filename if c.isalnum() or c in "-_.")
+        path = active.notes_dir / safe
+
+        if not path.exists():
+            return f"File not found: {safe}. Use read_note() with no args to list files.", False
+
+        text = path.read_text(encoding="utf-8")
+        if len(text) > 4000:
+            text = text[:4000] + f"\n\n... (truncated, {len(text)} chars total)"
+        return text, False
+
+    return handler
+
+
+def make_search_notes_handler(session_mgr: SessionManager) -> Callable:
+    """Handler for EXECUTE: search_notes(query="...")
+
+    Keyword search across all note files for the active binary.
+    Returns matching lines with context.
+    """
+
+    def handler(params: dict) -> Tuple[str, bool]:
+        query = params.get("query", "").strip().lower()
+        if not query:
+            return "[ERROR] query is required.", True
+        active = session_mgr.active
+        if active is None:
+            return "No binary loaded.", False
+        notes_dir = active.notes_dir
+        if notes_dir is None or not notes_dir.exists():
+            return f"No notes for {active.name} yet.", False
+
+        files = sorted(notes_dir.glob("*.md"))
+        if not files:
+            return f"No note files for {active.name}.", False
+
+        matches = []
+        for f in files:
+            lines = f.read_text(encoding="utf-8").splitlines()
+            for i, line in enumerate(lines, 1):
+                if query in line.lower():
+                    matches.append((f.name, i, line.strip()))
+
+        if not matches:
+            return f"No matches for '{query}' across {len(files)} note files.", False
+
+        result_lines = [f"Found {len(matches)} matches for '{query}':"]
+        for fname, lineno, text in matches[:30]:  # Cap at 30 hits
+            result_lines.append(f"  {fname}:{lineno}  {text[:120]}")
+        if len(matches) > 30:
+            result_lines.append(f"  ... and {len(matches) - 30} more matches")
+        return "\n".join(result_lines), False
+
+    return handler
+
+
 def make_list_directory_handler() -> Callable:
     """Handler for EXECUTE: list_directory(path="...")"""
 
@@ -262,6 +382,9 @@ def build_composite_runner(session_mgr: SessionManager) -> CompositeToolRunner:
         "load_binary": make_load_binary_handler(session_mgr, composite),
         "switch_binary": make_switch_binary_handler(session_mgr, composite),
         "list_sessions": make_list_sessions_handler(session_mgr),
+        "write_note": make_write_note_handler(session_mgr),
+        "read_note": make_read_note_handler(session_mgr),
+        "search_notes": make_search_notes_handler(session_mgr),
         "list_directory": make_list_directory_handler(),
         "file_info": make_file_info_handler(),
         "web_search": make_web_search_handler(),

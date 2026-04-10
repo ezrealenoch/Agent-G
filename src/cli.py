@@ -349,7 +349,7 @@ def cmd_chat(args: argparse.Namespace) -> int:
 
     # SessionManager tracks loaded binaries; CompositeToolRunner
     # dispatches meta-tools locally, delegates Ghidra tools to active binary.
-    session_mgr = SessionManager(pool, cfg.ghidra, parser)
+    session_mgr = SessionManager(pool, cfg.ghidra, parser, runs_dir=runs_dir)
     composite = build_composite_runner(session_mgr)
 
     # Build the LLM client directly — do NOT use BridgeLite here because
@@ -525,6 +525,24 @@ def cmd_chat(args: argparse.Namespace) -> int:
                 continue
 
             # ── Normal turn ──
+            # Inject note status into system prompt so the model knows
+            # how many notes it has (costs ~20 tokens, reminds it to use them).
+            active = session_mgr.active
+            if active and active.notes_dir and active.notes_dir.exists():
+                note_files = list(active.notes_dir.glob("*.md"))
+                if note_files:
+                    total_bytes = sum(f.stat().st_size for f in note_files)
+                    names = ", ".join(f.name for f in note_files[:5])
+                    note_status = (
+                        f"\n\n[Note status: {len(note_files)} files ({total_bytes:,} bytes) "
+                        f"for {active.name}: {names}]"
+                    )
+                else:
+                    note_status = f"\n\n[Note status: no notes saved yet for {active.name}. Use write_note() to persist findings.]"
+                runtime.system_prompt = system_prompt + note_status
+            else:
+                runtime.system_prompt = system_prompt
+
             turn_no += 1
             try:
                 summary = runtime.run_turn(line)

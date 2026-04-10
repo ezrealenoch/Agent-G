@@ -31,6 +31,14 @@ class BinarySession:
     tool_executor: ToolExecutor
     tool_runner: ToolRunner
     bootstrap_text: str = ""
+    notes_dir: Optional[Path] = None
+
+    def ensure_notes_dir(self) -> Path:
+        """Create and return the notes directory for this binary."""
+        if self.notes_dir is None:
+            raise ValueError("notes_dir not set")
+        self.notes_dir.mkdir(parents=True, exist_ok=True)
+        return self.notes_dir
 
 
 class SessionManager:
@@ -41,10 +49,12 @@ class SessionManager:
         pool: GhidraPool,
         ghidra_config: GhidraMCPConfig,
         command_parser: CommandParser,
+        runs_dir: Optional[Path] = None,
     ):
         self._pool = pool
         self._ghidra_config = ghidra_config
         self._parser = command_parser
+        self._runs_dir = runs_dir or Path("runs")
         self._sessions: Dict[str, BinarySession] = {}
         self._active_name: Optional[str] = None
 
@@ -101,6 +111,9 @@ class SessionManager:
             tool_runner, binary_name=binary_path.name,
         )
 
+        notes_dir = self._runs_dir / "notes" / session_name
+        notes_dir.mkdir(parents=True, exist_ok=True)
+
         session = BinarySession(
             name=session_name,
             binary_path=binary_path,
@@ -108,6 +121,7 @@ class SessionManager:
             tool_executor=tool_executor,
             tool_runner=tool_runner,
             bootstrap_text=bootstrap_text,
+            notes_dir=notes_dir,
         )
         self._sessions[session_name] = session
         self._active_name = session_name

@@ -419,6 +419,22 @@ This is a conversation, not a batch scan. Remember what was discussed. When the 
 
 You do NOT need to produce a verdict unless explicitly asked.
 
+## Investigation notes (persistent memory) — IMPORTANT
+
+You MUST use `write_note` after every significant finding. Notes are markdown files on disk that survive context compaction. Without notes, you WILL forget findings in long sessions.
+
+**After every decompile or analysis that reveals something interesting, immediately call:**
+```
+EXECUTE: write_note(content="## FUN_00401234\\nThis function does X. Called by Y. Possible vuln: Z.", filename="functions.md")
+```
+
+Organize by file:
+- `functions.md` — what each analyzed function does
+- `vulnerabilities.md` — confirmed or suspected security findings
+- `leads.md` — things to investigate later
+
+Use `read_note()` to list files, `read_note(filename="...")` to review, `search_notes(query="...")` to search. If you analyze a function and don't write a note, that knowledge is lost on compaction.
+
 ## Multi-binary support
 
 You can load multiple binaries. Use `load_binary(path="...")` to load one. Use `switch_binary(name="...")` to change the active target. Use `list_sessions()` to see what's loaded.
