@@ -18,7 +18,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from src.runtime.session import (
     Session, Message, MessageRole, ContentBlock, TokenUsage,
@@ -248,8 +248,21 @@ class ConversationRuntime:
             # Build assistant message blocks (text + tool_use blocks)
             blocks: List[ContentBlock] = []
 
-            # Strip tool call syntax from text portion
+            # Strip tool call syntax from text portion. Two passes:
+            #   1. Remove EXECUTE: directives + ```execute / ```tool_code blocks
+            #      (they were already extracted as real tool calls).
+            #   2. Remove fabricated "Tool [...]:" + fenced-code blocks the
+            #      model wrote into response_text without issuing a real
+            #      EXECUTE: directive (the hallucination pattern). Logging
+            #      the strip count to events.jsonl gives users visibility
+            #      into when their model is fabricating tool output.
             cleaned_text = _strip_tool_syntax(response_text)
+            cleaned_text, hallucinated_count = _strip_hallucinated_tool_results(cleaned_text)
+            if hallucinated_count > 0:
+                self.on_event("hallucinated_tool_block_stripped", {
+                    "iteration": iteration,
+                    "count": hallucinated_count,
+                })
             if cleaned_text.strip():
                 blocks.append(ContentBlock.text_block(cleaned_text.strip()))
 
@@ -449,6 +462,57 @@ def _strip_tool_syntax(text: str) -> str:
     # Collapse extra blank lines
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text
+
+
+# Pattern that catches model-fabricated tool-result blocks. The model
+# emits something like:
+#
+#     Tool [decompile_function_by_address]: 0x401000
+#     ```c
+#     undefined4 main(...) { ... }
+#     ```
+#
+# inside its response_text without ever issuing a real EXECUTE: directive.
+# The runtime's tool-call parser only extracts EXECUTE: directives, so the
+# fabricated block never produces a real tool dispatch — but it remains in
+# response_text and gets included in the next turn's context, where the
+# model treats its own fabrication as a real result. This is the
+# hallucination loop.
+#
+# We strip these blocks before the assistant message is committed to the
+# session history. The pattern is intentionally narrow: it only matches
+# "Tool [<name>]:" followed by a fenced code block, which is the shape
+# small models reliably produce when fabricating Ghidra output. Plain
+# prose mentions of "Tool [...]" (e.g. inside a code-review comment) are
+# not affected.
+_HALLUCINATED_TOOL_BLOCK = re.compile(
+    r"^\s*Tool\s*\[[A-Za-z_][A-Za-z0-9_]*\]:[^\n]*\n(?:```[a-z]*\n[\s\S]*?\n```\s*\n?)",
+    re.MULTILINE,
+)
+
+
+def _strip_hallucinated_tool_results(text: str) -> Tuple[str, int]:
+    """Strip ``Tool [...]:`` + fenced-code blocks fabricated by the model.
+
+    Returns ``(stripped_text, count)`` where ``count`` is the number of
+    fabricated blocks that were removed. Callers should log the count to
+    events.jsonl so users can see when their model is hallucinating tool
+    output and adjust accordingly (typically: switch to a stronger model
+    or use Claude Code as the driver instead of an internal LLM).
+    """
+    if not text:
+        return text, 0
+    count = 0
+    while True:
+        new_text, n = _HALLUCINATED_TOOL_BLOCK.subn("", text, count=1)
+        if n == 0:
+            break
+        count += 1
+        text = new_text
+    if count > 0:
+        # Collapse blank lines that the strip may have left behind
+        text = re.sub(r"\n{3,}", "\n\n", text)
+    return text, count
 
 
 def _has_completion_marker(text: str) -> bool:

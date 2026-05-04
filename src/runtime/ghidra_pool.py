@@ -63,6 +63,28 @@ DEFAULT_READY_TIMEOUT_S = 600.0
 DEFAULT_SHUTDOWN_TIMEOUT_S = 15.0
 
 
+def _resolve_ready_timeout() -> float:
+    """Resolve the Ghidra-ready-wait timeout, honoring an env override.
+
+    Large binaries (>100 MB Rust monoliths, big stripped Go daemons)
+    routinely need more than the 600 s default for Ghidra's auto-analysis
+    pass to complete. Setting ``AGENT_G_GHIDRA_READY_TIMEOUT_S`` to a
+    larger value (e.g. ``3600``) lets users handle those without modifying
+    code. Invalid values fall back to the default with no error so a
+    typo'd env var doesn't break setups that worked before.
+    """
+    raw = os.environ.get("AGENT_G_GHIDRA_READY_TIMEOUT_S")
+    if raw is None or raw == "":
+        return DEFAULT_READY_TIMEOUT_S
+    try:
+        v = float(raw)
+        if v > 0:
+            return v
+    except ValueError:
+        pass
+    return DEFAULT_READY_TIMEOUT_S
+
+
 @dataclass
 class GhidraHandle:
     """A live Ghidra HTTP server owned by the pool.
@@ -93,7 +115,7 @@ class PoolConfig:
     port_start: int = DEFAULT_PORT_START
     port_end: int = DEFAULT_PORT_END
     max_concurrent: int = 16        # soft cap on simultaneous instances
-    ready_timeout_s: float = DEFAULT_READY_TIMEOUT_S
+    ready_timeout_s: float = field(default_factory=_resolve_ready_timeout)
     shutdown_timeout_s: float = DEFAULT_SHUTDOWN_TIMEOUT_S
     # Temp workspace root. Pool creates a per-run subdirectory under this.
     workspace_root: Path = field(default_factory=lambda: Path(tempfile.gettempdir()) / "agent_g_pool")

@@ -276,7 +276,16 @@ def _parse_verdict(text: str) -> str:
             text,
         )
     if m:
-        v = m.group(1).strip().upper()
+        # Normalize underscores and dashes to spaces so the captured token
+        # ("NOT_VULNERABLE", "NOT-VULNERABLE", "NOT VULNERABLE") all collapse
+        # to a single canonical form before substring matching. Without this
+        # normalization the "NOT VULN" substring check missed underscore-form
+        # verdicts and the next check ("VULNERABLE" in "NOT_VULNERABLE") was
+        # True (substring), causing NOT_VULNERABLE results to be silently
+        # recorded as VULNERABLE.
+        v = m.group(1).strip().upper().replace("_", " ").replace("-", " ")
+        # Order matters: check NOT-form first, since "VULNERABLE" is itself
+        # a substring of "NOT VULNERABLE".
         if any(k in v for k in ("NOT VULN", "BENIGN", "SAFE")):
             return "NOT_VULNERABLE"
         if any(k in v for k in ("VULNERABLE", "EXPLOIT", "MALICIOUS")):
