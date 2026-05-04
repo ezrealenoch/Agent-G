@@ -662,6 +662,136 @@ def cmd_store(args: argparse.Namespace) -> int:
     return 1
 
 
+# ── drive: keep a Ghidra HTTP server alive for external querying ──
+
+def cmd_drive(args: argparse.Namespace) -> int:
+    """Provision a Ghidra HTTP server and hold it open for external queries.
+
+    The mode is intended for a Claude Code (or any external orchestrator)
+    session that wants to query Ghidra directly via authenticated HTTP
+    instead of using Agent-G's internal LLM loop.
+
+    Subcommands:
+      agent-g drive <binary>       Provision; block until SIGINT.
+      agent-g drive --detach <b>   Provision, fork to background, exit.
+      agent-g drive stop           Kill the active session + clean state.
+      agent-g drive status         Show what's currently provisioned.
+    """
+    from src.runtime import drive  # noqa: PLC0415
+
+    action = getattr(args, "drive_action", None) or "start"
+
+    if action == "stop":
+        cleaned = drive.stop_drive(force=args.force)
+        if cleaned:
+            print("drive session stopped, state cleaned")
+        else:
+            print("nothing to stop (no active session)")
+        return 0
+
+    if action == "status":
+        info = drive.status_drive()
+        if info is None:
+            print("no drive session is active")
+            return 1
+        if args.format == "json":
+            import dataclasses, json as _json  # noqa: PLC0415
+            print(_json.dumps(dataclasses.asdict(info), indent=2))
+        else:
+            print(f"binary    : {info.binary_path}")
+            print(f"url       : {info.base_url}")
+            print(f"port      : {info.port}")
+            print(f"pid       : {info.pid}")
+            print(f"started_at: {info.started_at}")
+        return 0
+
+    # action == "start" — the default. args.binary is required.
+    binary = getattr(args, "binary", None)
+    if not binary:
+        print("error: drive requires a binary path (or use 'drive stop' / 'drive status')",
+              file=sys.stderr)
+        return 64
+
+    try:
+        info = drive.start_drive(
+            binary,
+            port=args.port,
+            ready_timeout=args.ready_timeout,
+        )
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if args.format == "json":
+        import dataclasses, json as _json  # noqa: PLC0415
+        print(_json.dumps(dataclasses.asdict(info), indent=2))
+    else:
+        print(f"[drive] ready: {info.binary_name}")
+        print(f"[drive] url    = {info.base_url}")
+        print(f"[drive] pid    = {info.pid}")
+        print(f"[drive] session= ./ghidra_session.json")
+        print(f"[drive] query with: agent-g g <endpoint> [k=v ...]")
+
+    if args.detach:
+        return 0
+
+    # Foreground: block until interrupted, then clean up.
+    print("[drive] holding session open. Ctrl+C to stop.", flush=True)
+    try:
+        import time as _time  # noqa: PLC0415
+        while True:
+            _time.sleep(60)
+    except KeyboardInterrupt:
+        print("\n[drive] stopping...", flush=True)
+        drive.stop_drive()
+        print("[drive] stopped.")
+    return 0
+
+
+# ── g: query the running Ghidra ───────────────────────────────────
+
+def cmd_g(args: argparse.Namespace) -> int:
+    """Authenticated GET against the running drive session's Ghidra.
+
+    Replaces the standalone g.sh / g.ps1 helpers when the agent-g CLI is
+    on PATH. Reads the session file (./ghidra_session.json or
+    $AGENT_G_SESSION_FILE) and forwards `k=v` args as query parameters.
+    """
+    from src.runtime import drive  # noqa: PLC0415
+    import requests  # noqa: PLC0415
+
+    # Parse k=v args from the unstructured params list
+    params: dict = {}
+    for kv in args.params or []:
+        if "=" not in kv:
+            print(f"error: param '{kv}' is not in k=v form", file=sys.stderr)
+            return 64
+        k, v = kv.split("=", 1)
+        params[k] = v
+
+    try:
+        body = drive.query(args.endpoint, params=params, timeout=args.timeout)
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except requests.HTTPError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        if exc.response is not None and exc.response.text:
+            print(exc.response.text, file=sys.stderr)
+        return 1
+    except requests.RequestException as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    sys.stdout.write(body)
+    if not body.endswith("\n"):
+        sys.stdout.write("\n")
+    return 0
+
+
 # ── argparse plumbing ───────────────────────────────────────────
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -742,6 +872,59 @@ def _build_parser() -> argparse.ArgumentParser:
     sto.add_argument("--trace-id", default=None)
     sto.add_argument("--format", choices=("text", "json"), default="text")
 
+    # drive: keep a Ghidra session alive for external querying
+    drv = sub.add_parser(
+        "drive",
+        help="provision Ghidra and hold the session open for external queries",
+    )
+    drv_sub = drv.add_subparsers(dest="drive_action")
+    drv_start = drv_sub.add_parser(
+        "start",
+        help="provision Ghidra for a binary (default action; can be omitted)",
+    )
+    drv_start.add_argument("binary", help="path to the binary to analyze")
+    drv_start.add_argument("--port", type=int, default=None,
+                           help="force a specific port (default: pool picks one)")
+    drv_start.add_argument("--ready-timeout", type=float, default=None,
+                           help="seconds to wait for Ghidra ingest "
+                                "(default: AGENT_G_GHIDRA_READY_TIMEOUT_S env or 600)")
+    drv_start.add_argument("--detach", action="store_true",
+                           help="fork into background and exit; otherwise blocks until SIGINT")
+    drv_start.add_argument("--format", choices=("text", "json"), default="text")
+    drv_stop = drv_sub.add_parser(
+        "stop", help="kill the active session and clean orphan state",
+    )
+    drv_stop.add_argument("--force", action="store_true",
+                          help="also kill orphan java processes / ghidra workers")
+    drv_stop.add_argument("--format", choices=("text", "json"), default="text")
+    drv_status = drv_sub.add_parser(
+        "status", help="show currently-provisioned binary and URL (if any)",
+    )
+    drv_status.add_argument("--format", choices=("text", "json"), default="text")
+    # Allow the bare form `agent-g drive <binary>` (no subcommand) by
+    # also accepting binary at the top level. This makes `drive` symmetric
+    # with `analyze` / `chat` for the common case.
+    drv.add_argument("binary", nargs="?", default=None,
+                     help=argparse.SUPPRESS)
+    drv.add_argument("--port", type=int, default=None, help=argparse.SUPPRESS)
+    drv.add_argument("--ready-timeout", type=float, default=None, help=argparse.SUPPRESS)
+    drv.add_argument("--detach", action="store_true", help=argparse.SUPPRESS)
+    drv.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
+    drv.add_argument("--format", choices=("text", "json"), default="text",
+                     help=argparse.SUPPRESS)
+
+    # g: query the running Ghidra
+    gp = sub.add_parser(
+        "g",
+        help="authenticated GET against the active drive session",
+    )
+    gp.add_argument("endpoint", help="Ghidra HTTP endpoint (e.g. imports, "
+                                     "decompile_function, strings, ...)")
+    gp.add_argument("params", nargs="*", default=None,
+                    help="query params as k=v pairs (e.g. limit=100 address=0x401000)")
+    gp.add_argument("--timeout", type=float, default=120.0,
+                    help="request timeout in seconds (default: 120)")
+
     return p
 
 
@@ -769,6 +952,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.store_action == "get" and not args.trace_id:
             parser.error("store get requires --trace-id")
         return cmd_store(args)
+    if args.command == "drive":
+        return cmd_drive(args)
+    if args.command == "g":
+        return cmd_g(args)
     parser.print_help()
     return 0
 

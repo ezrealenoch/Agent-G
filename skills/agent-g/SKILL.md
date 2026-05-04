@@ -7,44 +7,54 @@ description: Drive Agent-G's Ghidra HTTP server directly from a Claude Code sess
 
 Agent-G is a headless binary-analysis runtime: it spins up Ghidra in a sandbox,
 exposes Ghidra's analysis tools over an authenticated HTTP API, and ships
-helper scripts so a Claude Code session can drive the analysis directly via
-`curl` calls in `bash`.
+two CLI subcommands so a Claude Code session can drive the analysis directly:
+
+  - `agent-g drive <binary>` — provision Ghidra for one binary, hold the
+    session open until interrupted
+  - `agent-g g <endpoint> [k=v ...]` — authenticated query against the
+    running session
 
 **This is the recommended mode** for serious vulnerability hunting. Agent-G
 also supports an "internal LLM driver" mode (point `.env` at any provider via
 `agent-g analyze`), but that mode has produced hallucinated decompile output
 on small models in benchmark runs. Driving Ghidra from Claude Code via `bash`
-makes hallucinated tool calls structurally impossible — every claim you make
-about the binary must be backed by an actual `g.sh` invocation in the
-transcript.
+makes hallucinated tool calls structurally impossible — every claim about the
+binary must be backed by an actual `agent-g g` invocation in the transcript.
 
 ## Use this skill when
 
 - The user asks to **investigate / analyze / decompile / vuln-scan a binary**
   ("investigate this installer", "find vulns in this daemon", "decompile this DLL")
 - The user says **"install agent-g for me"** or **"set up Agent-G and run it on …"**
-- The user references **"drive Agent-G"**, **"the Ghidra HTTP server"**,
-  **"`g.sh`"**, or **"`provision_ghidra.py`"**
+- The user references **"drive Agent-G"**, **"the Ghidra HTTP server"**, or
+  **"`agent-g drive`"** / **"`agent-g g`"**
 
-## The headline workflow
+## The headline workflow (post `pip install -e .`)
 
 ```bash
-# 1. Provision a Ghidra instance for the target binary (background)
-python "$AGENT_G_HOME/skills/agent-g/provision_ghidra.py" "/path/to/binary" &
-# Wait for ghidra_session.json to appear (Ghidra ingest = 30 s for small ELFs,
-# can be 5-10 min for 100+ MB binaries). Poll the file, don't sleep blindly.
+# 1. Provision (foreground; blocks until Ctrl+C)
+agent-g drive /path/to/binary
+# Or, to fork into the background and return immediately:
+agent-g drive /path/to/binary --detach
 
-# 2. Query Ghidra. The g.sh helper auto-reads the auth token from the session file.
-"$AGENT_G_HOME/skills/agent-g/g.sh" plugin-version
-"$AGENT_G_HOME/skills/agent-g/g.sh" imports limit=100
-"$AGENT_G_HOME/skills/agent-g/g.sh" strings filter=http
-"$AGENT_G_HOME/skills/agent-g/g.sh" decompile_function address=0x180001000
+# 2. Query (in another terminal, or after --detach)
+agent-g g plugin-version                 # health check
+agent-g g imports limit=100
+agent-g g strings filter=http
+agent-g g decompile_function address=0x180001000
+agent-g g xrefs_to address=0x180001000
 
-# 3. Tear down when done
-kill %1   # or kill the provisioner PID
+# 3. Tear down (only needed if --detach was used)
+agent-g drive stop
 ```
 
-## Endpoints (all GET, all bearer-token-authenticated by g.sh)
+When you run `drive` in the background and then make `g` calls, write each
+command + a one-line response summary to a markdown file in the user's
+working directory (`investigation_log.md`). This is the audit trail —
+the whole point of this driver pattern is that every claim is backed by a
+real bash invocation.
+
+## Endpoints
 
 | Endpoint | Params | Purpose |
 |---|---|---|
@@ -64,21 +74,32 @@ kill %1   # or kill the provisioner PID
 
 ## Discipline
 
-1. **One binary at a time.** The provisioner spawns one Ghidra JVM per binary.
-   Tear down before starting a new one (concurrent provisioners race the pool's
-   port-claim and produce 401s). If you need to switch targets:
-   `kill <provisioner_pid> && rm ghidra_session.json && python provision_ghidra.py <new_binary> &`
-2. **Log every `g.sh` query.** Write each command to a markdown file in the
-   user's working directory (`investigation_log.md`) with a one-line response
-   summary. This is the audit trail.
-3. **Quote real curl output.** When you describe a function's behaviour in your
-   final report, paste the actual `decompile_function` response. Do NOT
-   paraphrase. The whole point of this driver pattern is unfakeable evidence.
-4. **Wait for ingest.** Ghidra needs to do auto-analysis before any tool query
-   works. Small binaries (<5 MB): ~30 s. Mid (5-50 MB): ~2 min. Large
-   (>100 MB): can be 5-10+ min, sometimes failing if the pool's ready-timeout
-   is hit. Poll `ghidra_session.json` until it appears; a stale provisioner
-   can leave `Ghidra_session.json` empty if the JVM crashed mid-ingest.
+1. **One binary at a time.** `agent-g drive` enforces this with a mutex —
+   it refuses to start if another session is active. To switch targets:
+   `agent-g drive stop && agent-g drive <new_binary>`.
+2. **Log every `g` query.** Write each command to a markdown file in the
+   user's working directory (`investigation_log.md`) with a one-line
+   response summary. This is the audit trail.
+3. **Quote real curl output.** When you describe a function's behavior in
+   your final report, paste the actual `decompile_function` response. Do
+   NOT paraphrase. The whole point of this driver pattern is unfakeable
+   evidence.
+4. **Wait for ingest.** Ghidra needs to do auto-analysis before any tool
+   query works. Small binaries (<5 MB): ~30 s. Mid (5-50 MB): ~2 min.
+   Large (>100 MB): can be 5-10+ min. The `drive` command blocks until
+   Ghidra is ready; you don't need to poll. If your binary is huge and
+   the default 600 s timeout might be hit, set `--ready-timeout 3600`
+   (or export `AGENT_G_GHIDRA_READY_TIMEOUT_S=3600` for the same effect).
+
+## Recovery from common failures
+
+| Symptom | Recovery |
+|---|---|
+| `agent-g g` returns 401 | Stale session/sidecar. `agent-g drive stop --force && agent-g drive <binary>` |
+| `agent-g drive` says "another drive session is already active" | `agent-g drive stop` |
+| `agent-g drive` exits with a Ghidra-ready timeout | `agent-g drive <binary> --ready-timeout 3600` (or use a smaller binary) |
+| `agent-g g` says "no drive session is active" | You forgot `--detach`. Either run `drive` in another terminal/background, or use `&` |
+| Orphan Java processes hanging around | `agent-g drive stop --force` |
 
 ## If `agent-g doctor` fails or the CLI isn't on PATH
 
@@ -91,8 +112,8 @@ The colleague hit this. Fix is one command from the cloned repo:
 
 The installer does `pip install --force-reinstall --no-deps -e .`, links
 `skills/agent-g/` into `~/.claude/skills/agent-g/`, and exports an
-`AGENT_G_HOME` env var for this skill's scripts to find. Both are idempotent —
-re-run anytime an install gets stale.
+`AGENT_G_HOME` env var. Both are idempotent — re-run anytime an install
+gets stale.
 
 ## "Download this repo, install it, and run it on `<binary>`" — full bootstrap
 
@@ -103,37 +124,39 @@ cd Agent-G
 # (no .env required for Claude-Code-as-driver mode — only needed for `agent-g analyze`)
 
 # Now provision and analyze:
-python skills/agent-g/provision_ghidra.py "/path/to/binary" &
-# wait for ghidra_session.json
-./skills/agent-g/g.sh plugin-version            # smoke test
-./skills/agent-g/g.sh imports limit=100         # start the investigation
+agent-g drive /path/to/binary --detach
+agent-g g plugin-version                        # smoke test
+agent-g g imports limit=100                     # start the investigation
+# ... many g calls ...
+agent-g drive stop
 ```
 
-If the user asks Claude Code to do the bootstrap, do all of the above in one
-turn — no need to ask them to confirm each step. The install scripts are
-side-effect-bounded (pip install + symlink under `~/.claude/skills/`).
+If the user asks Claude Code to do the bootstrap, do all of the above in
+one turn — no need to ask them to confirm each step. The install scripts
+are side-effect-bounded (pip install + symlink under `~/.claude/skills/`).
+
+## Fallback: shell-only (no `agent-g` CLI on PATH)
+
+If `pip install -e .` hasn't run and the `agent-g` CLI isn't on PATH, the
+skill still ships standalone helper scripts in this directory:
+
+```bash
+python "$AGENT_G_HOME/skills/agent-g/provision_ghidra.py" /path/to/binary &
+"$AGENT_G_HOME/skills/agent-g/g.sh" plugin-version
+"$AGENT_G_HOME/skills/agent-g/g.sh" imports limit=100
+kill %1
+```
+
+Same Ghidra pool, same HTTP API. The CLI subcommands are a thin wrapper
+around these scripts; both work without modification. Prefer the CLI
+when available.
 
 ## What this skill is not
 
-- **Not a wrapper around `agent-g analyze`.** The internal-LLM driver mode is
-  a separate path. This skill is specifically about Claude Code calling
-  `g.sh` directly. They share Agent-G's Ghidra pool and HTTP server, but the
-  reasoning loop is different: this skill's loop is your assistant turn, not
-  a Gemini/Claude API call inside Agent-G's process.
-- **Not a replacement for `agent-g chat` or `agent-g analyze`.** Use those
-  when you want batch automation, when you want a third-party LLM as the
-  driver, or when you need Agent-G's `trace.jsonl` / `provenance.json` audit
-  bundle. Use this skill when you want Claude Code to be the analyst.
-
-## Common pitfalls
-
-- **Stale `ghidra_session.json`.** If a previous provisioner crashed, the
-  session file may be there but the JVM is gone. `g.sh` will hang or 401.
-  Check with `ps -ef | grep provision_ghidra` (Linux/Mac) or
-  `tasklist | findstr java` (Windows); kill any orphan and remove the file.
-- **Concurrent provisioners.** Don't run two `provision_ghidra.py` at once.
-  The Ghidra pool's `_claim_port` races and you'll get 401 mismatches. If you
-  need to investigate two binaries, do them sequentially or use
-  `--port` (see `provision_ghidra.py --help`).
-- **`agent-g doctor` says everything is fine but `g.sh` 401s.** Stale token
-  sidecar in `$TEMP/agent_g_ghidra_token_*.txt`. Delete and re-provision.
+- **Not a wrapper around `agent-g analyze`.** The internal-LLM driver
+  mode is a separate path. This skill is specifically about Claude Code
+  calling `agent-g g` directly.
+- **Not a replacement for `agent-g chat`.** Use `chat` when you want
+  conversational state across multiple binaries with an internal LLM.
+  Use `drive`/`g` when you want Claude Code to be the analyst with full
+  control over every Ghidra query.
