@@ -86,16 +86,30 @@ Now in Claude Code, just say something like:
 > *"find vulns in `/usr/local/bin/<some-daemon>`"*
 > *"decompile this DLL and tell me what it does"*
 
-The skill triggers automatically. Claude Code spawns the Ghidra provisioner, waits for ingest,
-queries the HTTP API via `g.sh`, writes a per-binary investigation log, and tears down when
-done. You get a fully audited transcript — every quoted decompile is paired with the bash
-invocation that produced it.
+The skill triggers automatically. Claude Code spins up Ghidra via `agent-g drive`, queries the
+HTTP API via `agent-g g`, writes a per-binary investigation log, and tears down with
+`agent-g drive stop`. You get a fully audited transcript — every quoted decompile is paired
+with the bash invocation that produced it.
+
+If you'd rather work the commands directly instead of through the skill:
+
+```bash
+agent-g drive /path/to/binary --detach   # provision (mutex-guarded, blocks until ready)
+agent-g g plugin-version                 # health check
+agent-g g imports limit=100              # query as many times as you like
+agent-g g decompile_function address=0x401000
+agent-g drive stop                       # tear down (cleans orphans + sidecars)
+```
 
 For a fresh-clone-to-running pipeline (paste this into Claude Code on a new machine):
 
 > *"clone https://github.com/ezrealenoch/Agent-G.git, install it for me, and then run it on `<binary path>`"*
 
 Claude Code will do the full bootstrap in one turn, no further input required.
+
+For more on the architectural pattern (when to use which mode, how to run sub-agents, the
+audit-trail discipline), see [`docs/DRIVING.md`](docs/DRIVING.md).
+For failure-mode recovery, see [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 
 ---
 
@@ -147,8 +161,11 @@ You                    Agent-G CLI              Ghidra sandbox
 ```
 agent-g version              Print the installed version
 agent-g doctor               Self-check: JDK, Ghidra, deps, LLM config
-agent-g analyze <binary>     One-shot vulnerability scan (batch mode)
-agent-g chat <binary>        Interactive multi-turn investigation (REPL)
+agent-g analyze <binary>     One-shot vulnerability scan (internal-LLM mode)
+agent-g chat <binary>        Interactive multi-turn investigation (internal-LLM REPL)
+agent-g drive <binary>       Provision Ghidra and hold the session open for
+                             external query (Claude-Code-as-driver mode)
+agent-g g <endpoint> [k=v]   Authenticated GET against the active drive session
 agent-g replay <trace>       Inspect a captured trace
 agent-g pool status          Show the Ghidra instance pool
 agent-g store recent         List recent investigations
