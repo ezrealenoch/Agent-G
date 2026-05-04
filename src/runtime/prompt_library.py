@@ -254,7 +254,7 @@ background reporting cadence.
 Approach:
   1. list_imports — note network/crypto/IPC DLLs.
   2. list_strings filtered on: "https://", "http://", "/v1/", "/v2/", "api.", ".dev", ".com", ".io", \
-"warp.dev", "Bearer ", "Authorization", "User-Agent", "telemetry", "analytics", "sentry", \
+"Bearer ", "Authorization", "User-Agent", "telemetry", "analytics", "sentry", \
 "datadog", "amplitude", "auth0", "cognito", "openai", "anthropic", "claude", "gpt", "model=", \
 "\\\\.\\pipe\\", "CreateProcess", "rustls", "tokio", "hyper", "reqwest", "websocket", "wss://".
   3. list_segments — note any massive `.rdata` (static-linked Rust artifact) or `.text` size.
@@ -370,12 +370,12 @@ register_prompt(Prompt(
     name="pascal_loaddll_reach",
     version="v1",
     description=(
-        "WarpSetup.exe-specific: investigate whether wininet/winhttp/urlmon string "
+        "Inno Setup installer triage: investigate whether wininet/winhttp/urlmon string "
         "references in the PE are reachable via Pascal Script LoadDLL or are dead Inno "
         "Setup helper-module strings."
     ),
     template="""You are investigating ONE specific question about `{binary_name}` (an Inno Setup \
-6.7.0 installer): are the strings `wininet`, `winhttp`, and `urlmon` REACHABLE code paths, \
+installer): are the strings `wininet`, `winhttp`, and `urlmon` REACHABLE code paths, \
 or DEAD strings inside Inno's stock LoadDLL/SafeLoadLibrary helper that the bundled Pascal \
 Script never invokes?
 
@@ -447,9 +447,9 @@ register_prompt(Prompt(
         "Inno Setup uninstaller (unins000.exe) attack-surface audit: TOCTOU, DLL hijack, "
         "elevation, manifest signing. Trace-verification mandatory."
     ),
-    template="""You are auditing `{binary_name}` (a stock Inno Setup 6.7.0 uninstaller, ~4 MB) \
-for exploitable vulnerabilities. Note: this is upstream Inno Setup code, not Warp-authored. \
-Any real findings would be Inno Setup bugs, not Warp-specific.
+    template="""You are auditing `{binary_name}` (a stock Inno Setup uninstaller, typically ~4 MB) \
+for exploitable vulnerabilities. Note: this is upstream Inno Setup code, not application-vendor \
+code. Any real findings would be Inno Setup bugs, not vendor-specific.
 
 ## Specific attack-surface questions (investigate in order)
 
@@ -497,12 +497,12 @@ register_prompt(Prompt(
     name="md5_callsite_audit",
     version="v1",
     description=(
-        "warp.exe-specific: investigate whether MD5 is used for security purposes "
+        "MD5 use classification: investigate whether MD5 is used for security purposes "
         "(authentication, integrity verification of trusted data) or only for "
         "non-security uses (cache keys, content addressing, file dedup)."
     ),
     template="""You are investigating ONE specific question about `{binary_name}`: when the \
-binary uses MD5 (185 string hits in static analysis), is it for SECURITY decisions (where \
+binary uses MD5 (per a prior `list_strings filter=md5` pass), is it for SECURITY decisions (where \
 collision resistance matters) or NON-SECURITY uses (cache keys, file content-addressing, \
 deduplication, where MD5's collision weakness doesn't matter)?
 

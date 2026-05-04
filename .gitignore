@@ -87,5 +87,7 @@ sandbox/build/
 .cache/
 tmp/
 
-# Investigation artifacts (binary string-extraction dumps, etc.)
-warp_extract.json
+# Investigation artifacts (binary string-extraction dumps, ad-hoc per-target outputs)
+*_extract.json
+investigation_*.md
+ghidra_session.json

@@ -21,7 +21,7 @@ transcript.
 ## Use this skill when
 
 - The user asks to **investigate / analyze / decompile / vuln-scan a binary**
-  ("investigate `WarpSetup.exe`", "find vulns in `babeld`", "decompile this DLL")
+  ("investigate this installer", "find vulns in this daemon", "decompile this DLL")
 - The user says **"install agent-g for me"** or **"set up Agent-G and run it on …"**
 - The user references **"drive Agent-G"**, **"the Ghidra HTTP server"**,
   **"`g.sh`"**, or **"`provision_ghidra.py`"**

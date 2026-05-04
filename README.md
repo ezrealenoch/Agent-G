@@ -82,8 +82,8 @@ Claude Code afterwards.
 
 Now in Claude Code, just say something like:
 
-> *"investigate `C:\path\to\WarpSetup.exe`"*
-> *"find vulns in `/usr/local/bin/babeld`"*
+> *"investigate `C:\path\to\some-binary.exe`"*
+> *"find vulns in `/usr/local/bin/<some-daemon>`"*
 > *"decompile this DLL and tell me what it does"*
 
 The skill triggers automatically. Claude Code spawns the Ghidra provisioner, waits for ingest,
