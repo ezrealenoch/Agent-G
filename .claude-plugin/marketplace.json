@@ -1,0 +1,14 @@
+{
+  "name": "agent-g",
+  "owner": {
+    "name": "Enoch Wang"
+  },
+  "description": "Marketplace hosting the Agent-G binary-analysis plugin.",
+  "plugins": [
+    {
+      "name": "agent-g",
+      "source": ".",
+      "description": "Drive Agent-G's Ghidra HTTP server directly from a Claude Code session. Investigate binaries with Claude Code as the analyst."
+    }
+  ]
+}

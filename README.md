@@ -58,6 +58,64 @@ Then `agent-g analyze /path/to/binary` or `agent-g chat /path/to/binary` as abov
 
 ---
 
+## Quick start (Claude Code as the driver, recommended for serious work)
+
+The `analyze` and `chat` modes above use a third-party LLM (Claude/GPT/Gemini/Ollama) as the
+driver inside Agent-G's process. Agent-G also ships a **direct-driver mode**: a Claude Code
+session calls Ghidra's HTTP API itself via curl, with Agent-G acting as the sandbox manager
+only — no internal LLM, no API key, no `.env` configuration.
+
+This is the mode that produced credible results on real CVEs in our benchmark runs. The
+internal-LLM mode hallucinates decompile output on small models under verdict pressure;
+driving Ghidra from Claude Code makes hallucination structurally impossible because every
+claim must be backed by a real `g.sh` invocation in the bash transcript.
+
+```bash
+git clone https://github.com/ezrealenoch/Agent-G.git && cd Agent-G
+./install.sh        # Linux / macOS
+.\install.ps1       # Windows PowerShell
+```
+
+The installer does `pip install -e .`, links `skills/agent-g/` into `~/.claude/skills/agent-g/`,
+and persists `AGENT_G_HOME` so the helper scripts always know where the repo lives. Restart
+Claude Code afterwards.
+
+Now in Claude Code, just say something like:
+
+> *"investigate `C:\path\to\WarpSetup.exe`"*
+> *"find vulns in `/usr/local/bin/babeld`"*
+> *"decompile this DLL and tell me what it does"*
+
+The skill triggers automatically. Claude Code spawns the Ghidra provisioner, waits for ingest,
+queries the HTTP API via `g.sh`, writes a per-binary investigation log, and tears down when
+done. You get a fully audited transcript — every quoted decompile is paired with the bash
+invocation that produced it.
+
+For a fresh-clone-to-running pipeline (paste this into Claude Code on a new machine):
+
+> *"clone https://github.com/ezrealenoch/Agent-G.git, install it for me, and then run it on `<binary path>`"*
+
+Claude Code will do the full bootstrap in one turn, no further input required.
+
+---
+
+## When to use which mode
+
+| Use case | Mode |
+|---|---|
+| Interactive investigation, want full audit trail of every Ghidra query | **Claude Code as driver** (the skill) |
+| Vuln-hunt with the strongest available reasoning model | **Claude Code as driver** |
+| Batch / CI / unattended scanning of many binaries | `agent-g analyze` |
+| Benchmarking a specific LLM provider on Juliet | `agent-g analyze --model <name>` |
+| Need the structured `provenance.json` audit bundle | `agent-g analyze` |
+| Need conversational state across multiple binaries | `agent-g chat` |
+
+The two modes share the same Ghidra pool, the same HTTP API, and the same security model. They
+differ only in who's holding the prompt loop: Claude Code in your terminal, vs. an LLM API call
+inside Agent-G's process.
+
+---
+
 ## How it works
 
 ```

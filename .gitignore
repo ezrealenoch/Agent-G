@@ -86,3 +86,6 @@ sandbox/build/
 *.bak
 .cache/
 tmp/
+
+# Investigation artifacts (binary string-extraction dumps, etc.)
+warp_extract.json

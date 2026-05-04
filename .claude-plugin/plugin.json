@@ -1,0 +1,14 @@
+{
+  "name": "agent-g",
+  "description": "Headless binary-analysis runtime. Driver mode: Claude Code talks to Ghidra's HTTP API directly via curl, no internal LLM, no API key. Use when you want to investigate, decompile, or vuln-scan a binary file with Claude Code as the analyst. Supports PE / ELF / Mach-O.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Enoch Wang"
+  },
+  "contributors": [
+    { "name": "Claude (Anthropic)", "role": "co-author" }
+  ],
+  "homepage": "https://github.com/ezrealenoch/Agent-G",
+  "license": "MIT",
+  "keywords": ["binary-analysis", "reverse-engineering", "ghidra", "vulnerability-scanning", "claude-code", "decompiler", "PE", "ELF", "macho"]
+}
