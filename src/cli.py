@@ -901,15 +901,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "status", help="show currently-provisioned binary and URL (if any)",
     )
     drv_status.add_argument("--format", choices=("text", "json"), default="text")
-    # Allow the bare form `agent-g drive <binary>` (no subcommand) by
-    # also accepting binary at the top level. This makes `drive` symmetric
-    # with `analyze` / `chat` for the common case.
-    drv.add_argument("binary", nargs="?", default=None,
-                     help=argparse.SUPPRESS)
-    drv.add_argument("--port", type=int, default=None, help=argparse.SUPPRESS)
-    drv.add_argument("--ready-timeout", type=float, default=None, help=argparse.SUPPRESS)
-    drv.add_argument("--detach", action="store_true", help=argparse.SUPPRESS)
-    drv.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
+    # The bare form `agent-g drive <binary>` is handled by _normalize_drive_argv, which inserts
+    # `start`. Do NOT re-declare binary/--port/--detach/... on `drv` itself: argparse applies the
+    # parent's defaults after the subparser parses, which silently reset them to None/False.
     drv.add_argument("--format", choices=("text", "json"), default="text",
                      help=argparse.SUPPRESS)
 
@@ -928,10 +922,24 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
+_DRIVE_ACTIONS = ("start", "stop", "status")
+
+
+def _normalize_drive_argv(argv: List[str]) -> List[str]:
+    """`agent-g drive <binary> ...` -> `agent-g drive start <binary> ...`.
+
+    argparse reads the first token after `drive` as a subcommand, so a path there is an invalid
+    choice. Inserting `start` keeps the documented bare form working without a duplicate parent
+    argument set."""
+    if len(argv) >= 2 and argv[0] == "drive" and argv[1] not in _DRIVE_ACTIONS and not argv[1].startswith("-"):
+        return [argv[0], "start"] + argv[1:]
+    return list(argv)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     _load_env_file()
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_normalize_drive_argv(sys.argv[1:] if argv is None else argv))
 
     if args.version or args.command == "version":
         return cmd_version(args)
